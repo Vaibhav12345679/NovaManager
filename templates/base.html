@@ -35,6 +35,16 @@
     nav a {
       text-decoration: none;
     }
+    footer {
+      margin-top: 2rem;
+      padding: 1rem 0;
+      text-align: center;
+      color: #888;
+      font-size: 0.9rem;
+    }
+    body.dark-mode footer {
+      color: #bbb;
+    }
   </style>
 </head>
 <body class="p-3">
@@ -43,7 +53,7 @@
     <!-- Navigation -->
     <nav class="mb-3 d-flex justify-content-between align-items-center">
       <div>
-        <a href="{{ url_for('index') }}" class="me-2">Home</a>
+        <a href="{{ url_for('index') }}" class="me-2 fw-bold">🏠 NovaManager</a>
         {% if session.get('access_token') %}
           <a href="{{ url_for('admin_dashboard') }}" class="me-2">Dashboard</a>
           <a href="{{ url_for('reports_page') }}" class="me-2">Reports</a>
@@ -73,6 +83,11 @@
 
     <!-- Main content -->
     {% block content %}{% endblock %}
+
+    <!-- Footer -->
+    <footer>
+      <p>Powered by Tech of the world</p>
+    </footer>
 
   </div>
 

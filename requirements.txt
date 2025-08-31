@@ -1,9 +1,5 @@
-flask==2.3.2
-gunicorn==21.2.0
-python-dotenv==1.0.0
-supabase==2.0.0
-postgrest==0.13.0
-realtime==1.0.0
-storage3==0.7.7
-httpx==0.24.1
-chardet==5.1.0
+flask==3.0.3
+supabase==2.4.0
+python-dotenv==1.0.1
+werkzeug==3.0.3
+gunicorn==22.0.0

@@ -1,8 +1,9 @@
 Flask==2.3.2
+gunicorn==21.2.0
 python-dotenv==1.0.0
 supabase==2.3.5
-requests==2.31.0
-Werkzeug==2.3.7
-gunicorn==21.2.0
 chardet==5.1.0
-
+gotrue==2.9.1
+postgrest==0.15.1
+realtime==1.0.6
+storage3==0.7.7

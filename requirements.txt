@@ -6,6 +6,6 @@ gotrue==2.9.3
 postgrest==0.15.1
 realtime==1.0.6
 storage3==0.7.7
-httpx==0.26.1
-httpcore==0.26.1
+httpx==0.26.0
+httpcore==0.26.0
 chardet==5.1.0

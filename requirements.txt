@@ -2,7 +2,6 @@ Flask==2.3.2
 gunicorn==21.2.0
 python-dotenv==1.0.0
 supabase==2.0.0
-gotrue==2.9.3
 postgrest==0.15.1
 realtime==1.0.6
 storage3==0.7.7

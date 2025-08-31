@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>All Tasks - {{ profile.full_name if profile else '' }}</h2>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Assigned To</th>
+      <th>Status</th>
+      <th>File</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tasks %}
+      <tr>
+        <td>{{ t.title }}</td>
+        <td>
+          {% if users_dict and t.assigned_to %}
+            {{ users_dict.get(t.assigned_to, "Unknown") }}
+          {% else %}
+            Unassigned
+          {% endif %}
+        </td>
+        <td>{{ t.status }}</td>
+        <td>
+          {% if t.file_url %}
+            <a href="{{ t.file_url }}" target="_blank">Download</a>
+          {% else %}
+            -
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

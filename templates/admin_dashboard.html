@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin Dashboard - {{ profile.full_name if profile else 'Admin' }}</h2>
+
+<hr>
+<h4>Create Role</h4>
+<form method="post" action="/admin/create_role">
+  <div class="mb-3">
+    <input class="form-control" name="role_name" placeholder="Role Name" required>
+  </div>
+  <button class="btn btn-primary">Create Role</button>
+</form>
+
+<hr>
+<h4>Create Employee</h4>
+<form method="post" action="/admin/create_employee">
+  <div class="row mb-3">
+    <div class="col"><input class="form-control" name="name" placeholder="Name" required></div>
+    <div class="col"><input class="form-control" name="email" placeholder="Email" required></div>
+    <div class="col"><input class="form-control" name="password" placeholder="Password (optional)"></div>
+    <div class="col">
+      <select name="role_id" class="form-select" required>
+        <option value="">Select Role</option>
+        {% for r in roles %}
+          <option value="{{ r.id }}">{{ r.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col"><button class="btn btn-success">Create</button></div>
+  </div>
+</form>
+
+<hr>
+<h4>Create Task</h4>
+<form method="POST" action="/admin/create_task" enctype="multipart/form-data">
+  <div class="mb-3">
+    <label>Title</label>
+    <input type="text" name="title" class="form-control" required>
+  </div>
+  <div class="mb-3">
+    <label>Description</label>
+    <textarea name="description" class="form-control"></textarea>
+  </div>
+  <div class="mb-3">
+    <label>Assign To</label>
+    <select name="assigned_to" class="form-control">
+      <option value="">Unassigned</option>
+      {% for u in users %}
+        <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label>Upload File</label>
+    <input type="file" name="task_file" class="form-control">
+  </div>
+  <div class="mb-3">
+    <label>Priority</label>
+    <select name="priority" class="form-control">
+      <option>Low</option>
+      <option selected>Medium</option>
+      <option>High</option>
+    </select>
+  </div>
+  <div class="mb-3">
+    <label>Deadline</label>
+    <input type="date" name="deadline" class="form-control">
+  </div>
+  <button class="btn btn-success" type="submit">Create Task</button>
+</form>
+
+<hr>
+<h4>Tasks</h4>
+<table class="table">
+  <thead>
+    <tr><th>Title</th><th>Assigned</th><th>Status</th><th>Priority</th><th>File</th></tr>
+  </thead>
+  <tbody>
+    {% for t in tasks %}
+      <tr>
+        <td>{{ t.title }}</td>
+        <td>{{ t.profiles.full_name if t.get('profiles') else '—' }}</td>
+        <td>{{ t.status }}</td>
+        <td>{{ t.priority if t.priority else 'Medium' }}</td>
+        <td>
+          {% if t.file_url %}
+            <a href="{{ t.file_url }}" target="_blank">View</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<hr>
+<h4>Edit Dashboard Layout for a Role</h4>
+<p>Select a role to edit its dashboard layout:</p>
+
+<div class="mb-3">
+  <select id="role_select" class="form-select" onchange="goToEditor()">
+    <option value="">Select Role</option>
+    {% for r in roles %}
+      <option value="{{ r.id }}">{{ r.name }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<a id="edit_dashboard_btn" href="#" class="btn btn-info mb-3" style="display:none;">
+    Go to Dashboard Layout Editor
+</a>
+
+<script>
+function goToEditor(){
+    const select = document.getElementById('role_select');
+    const role_id = select.value;
+    const btn = document.getElementById('edit_dashboard_btn');
+    if(role_id){
+        btn.style.display = 'inline-block';
+        btn.href = '/admin/edit_dashboard/' + role_id;
+    } else {
+        btn.style.display = 'none';
+        btn.href = '#';
+    }
+}
+</script>
+{% endblock %}

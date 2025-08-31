@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Dashboard - {{ profile.full_name if profile else 'User' }}</h2>
+<hr>
+
+<!-- Render the code saved by admin -->
+<iframe sandbox="allow-scripts allow-same-origin" style="width:100%;height:80vh;border:1px solid #ccc;">
+    {{ dashboard_code|safe }}
+</iframe>
+{% endblock %}

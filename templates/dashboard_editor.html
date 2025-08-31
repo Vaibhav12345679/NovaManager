@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Dashboard Layout Editor</h2>
+<hr>
+
+<div class="mb-3">
+  <label>Select Role:</label>
+  <select id="role_select" class="form-select" onchange="loadRoleLayout()">
+    <option value="">Select Role</option>
+    {% for r in roles %}
+      <option value="{{ r.id }}">{{ r.name }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div id="dashboard_widgets" class="row g-2">
+  <!-- Example widgets -->
+  <div class="col-md-3 widget" draggable="true" data-id="widget_1">
+    <div class="card p-2">Widget 1</div>
+  </div>
+  <div class="col-md-3 widget" draggable="true" data-id="widget_2">
+    <div class="card p-2">Widget 2</div>
+  </div>
+  <div class="col-md-3 widget" draggable="true" data-id="widget_3">
+    <div class="card p-2">Widget 3</div>
+  </div>
+</div>
+
+<button class="btn btn-primary mt-2" onclick="saveDashboardLayout()">Save Layout</button>
+
+<script>
+let dragged = null;
+
+document.querySelectorAll('#dashboard_widgets .widget').forEach(w => {
+  w.addEventListener('dragstart', e => { dragged = w; });
+  w.addEventListener('dragover', e => e.preventDefault());
+  w.addEventListener('drop', e => {
+    e.preventDefault();
+    if(dragged && dragged !== w){
+      let parent = w.parentNode;
+      parent.insertBefore(dragged, w.nextSibling);
+    }
+  });
+});
+
+function saveDashboardLayout(){
+  const role_id = document.getElementById('role_select').value;
+  if(!role_id){ alert('Select a role first'); return; }
+
+  const layout = Array.from(document.querySelectorAll('#dashboard_widgets .widget')).map((w,i) => ({
+    id: w.dataset.id,
+    order: i
+  }));
+
+  fetch('/update_dashboard_layout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role_id, layout })
+  }).then(res => res.json())
+    .then(data => {
+      if(data.success) alert('✅ Layout saved');
+      else alert('❌ Error: ' + data.message);
+    });
+}
+</script>
+
+<style>
+#dashboard_widgets .widget { cursor: move; }
+</style>
+{% endblock %}

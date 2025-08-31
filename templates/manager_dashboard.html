@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Manager Dashboard - {{ profile.full_name if profile else 'Manager' }}</h2>
+<p>Manager view (minimal). You can extend this to allow managers to assign tasks, view reports, etc.</p>
+
+<h4>Employees</h4>
+<ul>
+  {% for u in users %}
+    <li>{{ u.full_name }} — {{ u.role }}</li>
+  {% endfor %}
+</ul>
+
+<h4>Tasks</h4>
+<ul>
+  {% for t in tasks %}
+    <li>{{ t.title }} — {{ t.status }}</li>
+  {% endfor %}
+</ul>
+{% endblock %}

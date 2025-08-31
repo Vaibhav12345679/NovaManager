@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Company Reports</h2>
+
+<p>Here you can view reports for tasks, employees, and progress.</p>
+
+<!-- Example: Task table -->
+<table class="table table-striped mt-3">
+  <thead>
+    <tr>
+      <th>Task</th>
+      <th>Assigned To</th>
+      <th>Priority</th>
+      <th>Status</th>
+      <th>Deadline</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for task in tasks %}
+    <tr>
+      <td>{{ task.title }}</td>
+      <td>
+        {% if task.assigned_to %}
+          {{ users_dict.get(task.assigned_to, "Unknown") }}
+        {% else %}
+          Unassigned
+        {% endif %}
+      </td>
+      <td>{{ task.priority }}</td>
+      <td>{{ task.status }}</td>
+      <td>{{ task.deadline or "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

@@ -9,9 +9,9 @@ import chardet  # pip install chardet
 
 # ----------------- Load .env -----------------
 load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_URL = os.getenv("ppedyrmjwjpjfmawvzfy.supabase.co")
+SUPABASE_ANON_KEY = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwZWR5cm1qd2pwamZtYXd2emZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU5NDMyODgsImV4cCI6MjA3MTUxOTI4OH0.pb-lwW62VUQmZRoOws2G7VKN3S2YRFAhmG4yCLFQx4g")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBwZWR5cm1qd2pwamZtYXd2emZ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTk0MzI4OCwiZXhwIjoyMDcxNTE5Mjg4fQ.FmZM9SVUpJFaN-Nu06spEL8dKdduvCCVOX5-_mEWQvY")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
 
 if not (SUPABASE_URL and SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY):

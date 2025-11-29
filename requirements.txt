@@ -1,8 +1,6 @@
-Flask==3.0.3
-gunicorn==22.0.0
-python-dotenv==1.0.1
-supabase==2.4.0
-Werkzeug==3.0.3
-chardet==5.2.0
-httpx[http2]<0.28.0
+flask
+gunicorn
+supabase-py
+httpx[http2]==0.27.2
+python-dotenv
 

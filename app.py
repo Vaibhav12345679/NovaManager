@@ -72,9 +72,30 @@ def get_profile():
 # ----------------- Routes -----------------
 @app.route("/")
 def index():
-    # Always show landing page with Login / Register buttons
-    # No redirect based on role or login status
-    return render_template("index.html")
+    """
+    Home page:
+    - Always show index.html
+    - If logged in, also fetch company name to show brand.
+    """
+    prof = get_profile()
+    company = None
+
+    if prof and prof.get("company_id"):
+        try:
+            comp_resp = (
+                sb_admin
+                .table("companies")
+                .select("name")
+                .eq("id", prof["company_id"])
+                .maybe_single()
+                .execute()
+            )
+            if comp_resp.data:
+                company = comp_resp.data.get("name")
+        except Exception:
+            company = None
+
+    return render_template("index.html", profile=prof, company=company)
 
 # --------- Register/Login/Logout ---------
 @app.route("/register", methods=["GET", "POST"])
@@ -190,9 +211,31 @@ def login():
             flash("❌ Login failed. Please check your email and password.", "danger")
             return redirect(url_for("login"))
 
+        # store token
         session["access_token"] = res.session.access_token
-        # After login, we still go to "/" (landing)
-        return redirect(url_for("index"))
+
+        # 🔥 Now redirect to respective dashboard
+        prof = get_profile()
+        if not prof:
+            # if somehow no profile, just go home
+            return redirect(url_for("index"))
+
+        role = prof.get("role")
+        role_id = prof.get("role_id")
+
+        if role == "company_admin":
+            return redirect(url_for("admin_dashboard"))
+        elif role == "manager":
+            # manager dashboard via panel system if role_id exists
+            if role_id:
+                return redirect(url_for("role_dashboard", role_id=role_id))
+            # fallback if no role_id set
+            return redirect(url_for("employee_dashboard"))
+        else:
+            # normal employee
+            if role_id:
+                return redirect(url_for("role_dashboard", role_id=role_id))
+            return redirect(url_for("employee_dashboard"))
 
     return render_template("login.html")
 
@@ -244,7 +287,7 @@ def role_dashboard(role_id):
 
     # Permissions:
     # - company_admin can view any role dashboard
-    # - normal employee can only view their own role_id dashboard
+    # - normal employee/manager can only view their own role_id dashboard
     if prof.get("role") != "company_admin" and str(prof.get("role_id")) != str(role_id):
         return "Unauthorized", 403
 
@@ -458,7 +501,7 @@ def reports_page():
                            total=total, completed=completed, pending=pending,
                            tasks_per_employee=tasks_per_employee)
 
-# ---------------- Employee Dashboard (optional fallback) ----------------
+# ---------------- Employee Dashboard (fallback) ----------------
 @app.route("/employee")
 @login_required
 def employee_dashboard():
@@ -478,3 +521,4 @@ def employee_dashboard():
 # ---------------- Run ----------------
 if __name__ == "__main__":
     app.run(debug=True)
+

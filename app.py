@@ -7,6 +7,9 @@ from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
 import chardet  # pip install chardet
 
+# 🔹 NEW: to catch Supabase/PostgREST DB errors (like duplicate key)
+from postgrest.exceptions import APIError
+
 # ----------------- Load .env -----------------
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -88,34 +91,65 @@ def register():
         email = request.form.get("email")
         password = request.form.get("password")
 
+        # 🔹 simple required fields check
+        if not (company_name and admin_name and email and password):
+            flash("All fields are required.", "danger")
+            return redirect(url_for("register"))
+
+        # 🔹 1) Create auth user
         try:
             signup = sb.auth.sign_up({"email": email, "password": password})
         except Exception as e:
-            flash("Sign up error: " + str(e), "danger")
+            msg = str(e)
+            # handle common "user already registered" style errors
+            if "already registered" in msg.lower() or "already exists" in msg.lower():
+                flash("An account with this email already exists. Please log in.", "warning")
+                return redirect(url_for("login"))
+            flash("Sign up error: " + msg, "danger")
             return redirect(url_for("register"))
 
-        user = signup.user if signup and signup.user else None
+        user = signup.user if signup and getattr(signup, "user", None) else None
         if not user:
             flash("Signup failed.", "danger")
             return redirect(url_for("register"))
 
         user_id = user.id
-        comp = sb_admin.table("companies").insert({
-            "name": company_name,
-            "admin_user_id": user_id,
-            "email": email
-        }).execute()
+
+        # 🔹 2) Insert into companies, handle duplicate email gracefully
+        try:
+            comp = sb_admin.table("companies").insert({
+                "name": company_name,
+                "admin_user_id": user_id,
+                "email": email
+            }).execute()
+        except APIError as e:
+            # Unique violation (duplicate company email)
+            if e.code == "23505":
+                flash("A company with this email already exists. Please log in instead.", "warning")
+                return redirect(url_for("login"))
+            flash(f"Company creation failed: {e.message}", "danger")
+            return redirect(url_for("register"))
+        except Exception as e:
+            flash("Company creation failed: " + str(e), "danger")
+            return redirect(url_for("register"))
+
         if not comp.data:
             flash("Company creation failed.", "danger")
             return redirect(url_for("register"))
+
         company_id = comp.data[0]["id"]
 
-        sb_admin.table("profiles").insert({
-            "id": user_id,
-            "full_name": admin_name,
-            "company_id": company_id,
-            "role": "company_admin"
-        }).execute()
+        # 🔹 3) Create admin profile
+        try:
+            sb_admin.table("profiles").insert({
+                "id": user_id,
+                "full_name": admin_name,
+                "company_id": company_id,
+                "role": "company_admin"
+            }).execute()
+        except Exception as e:
+            flash("Profile creation failed: " + str(e), "danger")
+            return redirect(url_for("register"))
 
         flash("Registered. Please login.", "success")
         return redirect(url_for("login"))
@@ -127,14 +161,20 @@ def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
+
+        if not (email and password):
+            flash("Email and password are required.", "danger")
+            return redirect(url_for("login"))
+
         try:
             res = sb.auth.sign_in_with_password({"email": email, "password": password})
         except Exception as e:
+            # Supabase error, usually "Invalid login credentials"
             flash("❌ Login failed: " + str(e), "danger")
             return redirect(url_for("login"))
 
-        if not res or not res.session:
-            flash("❌ Login failed.", "danger")
+        if not res or not getattr(res, "session", None):
+            flash("❌ Login failed. Please check your email and password.", "danger")
             return redirect(url_for("login"))
 
         session["access_token"] = res.session.access_token
@@ -167,8 +207,6 @@ def admin_dashboard():
         tasks=tasks_resp.data or [],
         roles=roles_resp.data or []
     )
-
-
 
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
@@ -367,4 +405,3 @@ def employee_dashboard():
 # ---------------- Run ----------------
 if __name__ == "__main__":
     app.run(debug=True)
-

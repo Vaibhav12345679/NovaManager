@@ -7,11 +7,8 @@ from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
 import chardet  # pip install chardet
 
-# catch Supabase/PostgREST DB errors (like duplicate key)
+# NEW: for catching DB errors like duplicate key
 from postgrest.exceptions import APIError
-
-# loader for dynamic role dashboards
-from importlib.machinery import SourceFileLoader
 
 # ----------------- Load .env -----------------
 load_dotenv()
@@ -36,10 +33,8 @@ ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "png", "jpg", "jpeg"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 # ----------------- Helpers -----------------
 def login_required(f):
@@ -50,7 +45,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapped
 
-
 def get_current_user():
     token = session.get("access_token")
     if not token:
@@ -60,7 +54,6 @@ def get_current_user():
         return resp.user if resp and resp.user else None
     except Exception:
         return None
-
 
 def get_profile():
     user = get_current_user()
@@ -73,7 +66,6 @@ def get_profile():
     except Exception:
         return None
 
-
 # ----------------- Routes -----------------
 @app.route("/")
 def index():
@@ -82,17 +74,13 @@ def index():
         role = prof.get("role")
         if role == "company_admin":
             return redirect(url_for("admin_dashboard"))
-        # if user has a role_id, use role-based custom panel
         elif prof.get("role_id"):
             role_info = sb_admin.table("roles").select("*").eq("id", prof["role_id"]).maybe_single().execute()
             if role_info.data:
                 return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
-            else:
-                return redirect(url_for("employee_dashboard"))
         else:
             return redirect(url_for("employee_dashboard"))
     return render_template("index.html")
-
 
 # --------- Register/Login/Logout ---------
 @app.route("/register", methods=["GET", "POST"])
@@ -103,31 +91,34 @@ def register():
         email = request.form.get("email")
         password = request.form.get("password")
 
-        # simple required fields check
+        # Required fields check
         if not (company_name and admin_name and email and password):
             flash("All fields are required.", "danger")
             return redirect(url_for("register"))
 
-        # 1) Create auth user
+        # 1) Create auth user using SERVICE ROLE (admin) so it's confirmed
         try:
-            signup = sb.auth.sign_up({"email": email, "password": password})
+            created = sb_admin.auth.admin.create_user({
+                "email": email,
+                "password": password,
+                "email_confirm": True
+            })
         except Exception as e:
             msg = str(e)
-            # handle common "user already registered" style errors
             if "already registered" in msg.lower() or "already exists" in msg.lower():
                 flash("An account with this email already exists. Please log in.", "warning")
                 return redirect(url_for("login"))
             flash("Sign up error: " + msg, "danger")
             return redirect(url_for("register"))
 
-        user = signup.user if signup and getattr(signup, "user", None) else None
+        user = getattr(created, "user", None)
         if not user:
-            flash("Signup failed.", "danger")
+            flash("Signup failed (no user returned).", "danger")
             return redirect(url_for("register"))
 
         user_id = user.id
 
-        # 2) Insert into companies, handle duplicate email gracefully
+        # 2) Insert into companies (handle duplicate company email)
         try:
             comp = sb_admin.table("companies").insert({
                 "name": company_name,
@@ -135,18 +126,35 @@ def register():
                 "email": email
             }).execute()
         except APIError as e:
-            # Unique violation (duplicate company email)
             if e.code == "23505":
                 flash("A company with this email already exists. Please log in instead.", "warning")
+                # optional: delete user to avoid orphan
+                try:
+                    sb_admin.auth.admin.delete_user(user_id)
+                except Exception:
+                    pass
                 return redirect(url_for("login"))
             flash(f"Company creation failed: {e.message}", "danger")
+            # optional: delete user
+            try:
+                sb_admin.auth.admin.delete_user(user_id)
+            except Exception:
+                pass
             return redirect(url_for("register"))
         except Exception as e:
             flash("Company creation failed: " + str(e), "danger")
+            try:
+                sb_admin.auth.admin.delete_user(user_id)
+            except Exception:
+                pass
             return redirect(url_for("register"))
 
         if not comp.data:
             flash("Company creation failed.", "danger")
+            try:
+                sb_admin.auth.admin.delete_user(user_id)
+            except Exception:
+                pass
             return redirect(url_for("register"))
 
         company_id = comp.data[0]["id"]
@@ -161,13 +169,13 @@ def register():
             }).execute()
         except Exception as e:
             flash("Profile creation failed: " + str(e), "danger")
+            # you could also clean up company + user here if you want strict consistency
             return redirect(url_for("register"))
 
         flash("Registered. Please login.", "success")
         return redirect(url_for("login"))
 
     return render_template("register.html")
-
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -182,7 +190,6 @@ def login():
         try:
             res = sb.auth.sign_in_with_password({"email": email, "password": password})
         except Exception as e:
-            # Supabase error, usually "Invalid login credentials"
             flash("❌ Login failed: " + str(e), "danger")
             return redirect(url_for("login"))
 
@@ -195,12 +202,10 @@ def login():
 
     return render_template("login.html")
 
-
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
-
 
 # ---------------- Admin Dashboard ----------------
 @app.route("/admin")
@@ -223,68 +228,6 @@ def admin_dashboard():
         roles=roles_resp.data or []
     )
 
-
-# ---------------- Role-based Dynamic Dashboard ----------------
-@app.route("/role/<role_id>")
-@login_required
-def role_dashboard(role_id):
-    """
-    Dynamic dashboard per role.
-
-    For role with id = <role_id>, we look into folder:
-      dashboard_codes/<role_id>/
-    and load the first .py file there.
-
-    That .py file must define:
-      def render_dashboard(profile, users, tasks, roles) -> str:
-          return "<html>...</html>"
-    """
-    prof = get_profile()
-    if not prof:
-        return redirect(url_for("login"))
-
-    company_id = prof["company_id"]
-
-    # Permissions:
-    # - company_admin can view any role dashboard
-    # - normal user can only see their own role_id
-    if prof.get("role") != "company_admin" and str(prof.get("role_id")) != str(role_id):
-        return "Unauthorized", 403
-
-    # Real data from Supabase
-    users = sb_admin.table("profiles").select("*").eq("company_id", company_id).execute().data or []
-    tasks = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute().data or []
-    roles = sb_admin.table("roles").select("*").eq("company_id", company_id).execute().data or []
-
-    # Folder for this role (your old logic)
-    role_dir = os.path.join("dashboard_codes", str(role_id))
-    if not os.path.isdir(role_dir):
-        return f"No dashboard code uploaded for this role (folder {role_dir} not found).", 404
-
-    # Pick the first .py file in that folder (e.g. manager.py, employee.py, etc.)
-    py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
-    if not py_files:
-        return "No .py dashboard file found in this role folder.", 404
-
-    module_path = os.path.join(role_dir, py_files[0])
-
-    try:
-        mod = SourceFileLoader(f"role_module_{role_id}", module_path).load_module()
-    except Exception as e:
-        return f"Error loading dashboard module: {e}", 500
-
-    if not hasattr(mod, "render_dashboard"):
-        return "Dashboard module has no render_dashboard(profile, users, tasks, roles) function", 500
-
-    try:
-        html = mod.render_dashboard(prof, users, tasks, roles)
-    except Exception as e:
-        return f"Error rendering dashboard: {e}", 500
-
-    return html
-
-
-# ---------------- Edit Dashboard Code (Admin only, old panel editor) ----------------
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
 def edit_dashboard(role_id):
@@ -348,7 +291,6 @@ def edit_dashboard(role_id):
         file_content=file_content
     )
 
-
 # ---------------- Create Role ----------------
 @app.route("/admin/create_role", methods=["POST"])
 @login_required
@@ -364,7 +306,6 @@ def create_role():
     }).execute()
     flash(f"✅ Role '{role_name}' created.", "success")
     return redirect(url_for("admin_dashboard"))
-
 
 # ---------------- Create Employee ----------------
 @app.route("/admin/create_employee", methods=["POST"])
@@ -403,7 +344,6 @@ def create_employee():
     flash(f"✅ Employee created (password: {password}) — share securely.", "success")
     return redirect(url_for("admin_dashboard"))
 
-
 # ---------------- Create Task ----------------
 @app.route("/admin/create_task", methods=["POST"])
 @login_required
@@ -440,7 +380,6 @@ def create_task():
     flash("✅ Task created.", "success")
     return redirect(url_for("admin_dashboard"))
 
-
 # ---------------- Reports ----------------
 @app.route("/admin/reports")
 @login_required
@@ -466,8 +405,7 @@ def reports_page():
                            total=total, completed=completed, pending=pending,
                            tasks_per_employee=tasks_per_employee)
 
-
-# ---------------- Employee Dashboard (fallback) ----------------
+# ---------------- Employee Dashboard ----------------
 @app.route("/employee")
 @login_required
 def employee_dashboard():
@@ -482,9 +420,7 @@ def employee_dashboard():
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total > 0 else 0
 
-    # you can keep your existing employee_dashboard.html or just make a simple one
     return render_template("employee_dashboard.html", profile=prof, tasks=tasks, percent=percent)
-
 
 # ---------------- Run ----------------
 if __name__ == "__main__":

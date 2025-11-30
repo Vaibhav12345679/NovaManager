@@ -1,115 +1,527 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Admin Dashboard - {{ profile.full_name if profile else 'Admin' }}</h2>
 
-<hr>
-<h4>Create Role</h4>
-<form method="post" action="/admin/create_role">
-  <div class="mb-3">
-    <input class="form-control" name="role_name" placeholder="Role Name" required>
-  </div>
-  <button class="btn btn-primary">Create Role</button>
-</form>
+<style>
+  /* Scoped NovaManager dark UI for admin dashboard */
+  .nm-admin-page {
+    margin: 0;
+    padding: 1.5rem 0 2rem;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #e5e7eb;
+  }
 
-<hr>
-<h4>Create Employee</h4>
-<form method="post" action="/admin/create_employee">
-  <div class="row mb-3">
-    <div class="col"><input class="form-control" name="name" placeholder="Name" required></div>
-    <div class="col"><input class="form-control" name="email" placeholder="Email" required></div>
-    <div class="col"><input class="form-control" name="password" placeholder="Password (optional)"></div>
-    <div class="col">
-      <select name="role_id" class="form-select" required>
-        <option value="">Select Role</option>
-        {% for r in roles %}
-          <option value="{{ r.id }}">{{ r.name }}</option>
-        {% endfor %}
-      </select>
+  .nm-admin-layout {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.4fr);
+    gap: 1.4rem;
+  }
+
+  @media (max-width: 900px) {
+    .nm-admin-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .nm-card {
+    background: rgba(15,23,42,0.95);
+    border-radius: 1.25rem;
+    border: 1px solid rgba(148,163,184,0.35);
+    box-shadow: 0 18px 40px rgba(15,23,42,0.8);
+    padding: 1.25rem 1.5rem 1.4rem;
+  }
+
+  .nm-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .nm-card-title {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .nm-card-sub {
+    font-size: 0.8rem;
+    color: #9ca3af;
+  }
+
+  .nm-chip {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.5);
+    color: #9ca3af;
+  }
+
+  .nm-section-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin: 0.75rem 0 0.4rem;
+  }
+
+  .nm-empty {
+    font-size: 0.85rem;
+    color: #9ca3af;
+  }
+
+  .nm-table-wrap {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(55,65,81,0.7);
+    background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,23,42,0.88));
+    overflow: hidden;
+    font-size: 0.8rem;
+  }
+
+  .nm-scroll-y {
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .nm-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .nm-table thead {
+    background: rgba(15,23,42,0.98);
+  }
+
+  .nm-table th,
+  .nm-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+
+  .nm-table th {
+    font-weight: 500;
+    color: #9ca3af;
+    border-bottom: 1px solid rgba(55,65,81,0.9);
+  }
+
+  .nm-table tbody tr:nth-child(even) { background: rgba(15,23,42,0.9); }
+  .nm-table tbody tr:nth-child(odd)  { background: rgba(15,23,42,0.96); }
+
+  .nm-badge {
+    display: inline-flex;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.5);
+    font-size: 0.7rem;
+    color: #9ca3af;
+  }
+
+  .nm-form-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.9rem;
+  }
+
+  .nm-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.8rem;
+  }
+
+  .nm-field label {
+    color: #9ca3af;
+  }
+
+  .nm-field input,
+  .nm-field select,
+  .nm-field textarea {
+    border-radius: 0.6rem;
+    border: 1px solid rgba(148,163,184,0.4);
+    background: rgba(15,23,42,0.8);
+    padding: 0.45rem 0.55rem;
+    color: #e5e7eb;
+    font-size: 0.82rem;
+    outline: none;
+  }
+
+  .nm-field textarea {
+    resize: vertical;
+    min-height: 60px;
+  }
+
+  .nm-field input:focus,
+  .nm-field select:focus,
+  .nm-field textarea:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 1px rgba(56,189,248,0.4);
+  }
+
+  .nm-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.4rem;
+  }
+
+  .nm-btn-primary {
+    padding: 0.45rem 1.1rem;
+    border-radius: 999px;
+    border: none;
+    background: linear-gradient(to right, #0ea5e9, #22c55e);
+    color: #020617;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .nm-btn-primary:hover {
+    filter: brightness(1.05);
+  }
+
+  .nm-btn-danger {
+    padding: 0.28rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid rgba(248,113,113,0.9);
+    background: transparent;
+    color: #fecaca;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .nm-btn-danger:hover {
+    background: rgba(248,113,113,0.13);
+  }
+
+  .nm-divider {
+    height: 1px;
+    border: none;
+    background: radial-gradient(circle, rgba(148,163,184,0.6), transparent);
+    margin: 0.9rem 0;
+  }
+
+  .nm-pill-link {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.6);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    text-decoration: none;
+    color: #e5e7eb;
+  }
+
+  .nm-pill-link:hover {
+    border-color: #38bdf8;
+    color: #38bdf8;
+  }
+
+  a.nm-link {
+    color: #38bdf8;
+    text-decoration: none;
+  }
+  a.nm-link:hover {
+    text-decoration: underline;
+  }
+
+  .nm-header-line {
+    max-width: 1120px;
+    margin: 0 auto 0.8rem;
+    padding: 0 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #e5e7eb;
+  }
+
+  .nm-header-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .nm-header-sub {
+    font-size: 0.8rem;
+    color: #9ca3af;
+  }
+</style>
+
+<div class="nm-admin-page">
+  <div class="nm-header-line">
+    <div>
+      <div class="nm-header-title">
+        Admin Dashboard – {{ profile.full_name if profile else 'Admin' }}
+      </div>
+      <div class="nm-header-sub">
+        Manage roles, employees and tasks for your company.
+      </div>
     </div>
-    <div class="col"><button class="btn btn-success">Create</button></div>
+    <div style="font-size:0.8rem;">
+      <a href="{{ url_for('index') }}" class="nm-link">Home</a> ·
+      <a href="{{ url_for('logout') }}" class="nm-link">Logout</a>
+    </div>
   </div>
-</form>
 
-<hr>
-<h4>Create Task</h4>
-<form method="POST" action="/admin/create_task" enctype="multipart/form-data">
-  <div class="mb-3">
-    <label>Title</label>
-    <input type="text" name="title" class="form-control" required>
-  </div>
-  <div class="mb-3">
-    <label>Description</label>
-    <textarea name="description" class="form-control"></textarea>
-  </div>
-  <div class="mb-3">
-    <label>Assign To</label>
-    <select name="assigned_to" class="form-control">
-      <option value="">Unassigned</option>
-      {% for u in users %}
-        <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="mb-3">
-    <label>Upload File</label>
-    <input type="file" name="task_file" class="form-control">
-  </div>
-  <div class="mb-3">
-    <label>Priority</label>
-    <select name="priority" class="form-control">
-      <option>Low</option>
-      <option selected>Medium</option>
-      <option>High</option>
-    </select>
-  </div>
-  <div class="mb-3">
-    <label>Deadline</label>
-    <input type="date" name="deadline" class="form-control">
-  </div>
-  <button class="btn btn-success" type="submit">Create Task</button>
-</form>
+  <div class="nm-admin-layout">
+    <!-- LEFT -->
+    <section class="nm-card">
+      <div class="nm-card-header">
+        <div>
+          <div class="nm-card-title">Employees</div>
+          <div class="nm-card-sub">All employees in your company (excluding you).</div>
+        </div>
+        <div class="nm-chip">
+          {{ (users|length - 1) if users else 0 }} employees
+        </div>
+      </div>
 
-<hr>
-<h4>Tasks</h4>
-<table class="table">
-  <thead>
-    <tr><th>Title</th><th>Assigned</th><th>Status</th><th>Priority</th><th>File</th></tr>
-  </thead>
-  <tbody>
-    {% for t in tasks %}
-      <tr>
-        <td>{{ t.title }}</td>
-        <td>{{ t.profiles.full_name if t.get('profiles') else '—' }}</td>
-        <td>{{ t.status }}</td>
-        <td>{{ t.priority if t.priority else 'Medium' }}</td>
-        <td>
-          {% if t.file_url %}
-            <a href="{{ t.file_url }}" target="_blank">View</a>
+      <!-- Employees table with delete -->
+      <div class="nm-table-wrap nm-scroll-y">
+        <table class="nm-table">
+          <thead>
+          <tr>
+            <th>Name</th>
+            <th>Role</th>
+            <th>Role ID</th>
+            <th>Action</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% if users %}
+            {% for u in users %}
+              {% if u.id != profile.id %}
+                <tr>
+                  <td>{{ u.full_name or "Unnamed" }}</td>
+                  <td><span class="nm-badge">{{ u.role or "employee" }}</span></td>
+                  <td>{{ u.role_id or "-" }}</td>
+                  <td>
+                    <form method="post"
+                          action="{{ url_for('admin_delete_employee', user_id=u.id) }}"
+                          onsubmit="return confirm('Delete this employee?');">
+                      <button type="submit" class="nm-btn-danger">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
           {% else %}
-            —
+            <tr>
+              <td colspan="4" class="nm-empty">No employees yet.</td>
+            </tr>
           {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+          </tbody>
+        </table>
+      </div>
 
-<hr>
-<h4>Edit Dashboard Layout for a Role</h4>
-<p>Select a role to edit its dashboard layout:</p>
+      <hr class="nm-divider">
 
-<div class="mb-3">
-  <select id="role_select" class="form-select" onchange="goToEditor()">
-    <option value="">Select Role</option>
-    {% for r in roles %}
-      <option value="{{ r.id }}">{{ r.name }}</option>
-    {% endfor %}
-  </select>
+      <!-- Roles + panel editor -->
+      <div>
+        <div class="nm-section-title">Existing Roles & Panel Editor</div>
+        <p class="nm-empty" style="margin-bottom:0.5rem;">
+          Select a role to open its dashboard layout editor.
+        </p>
+
+        <div style="margin-bottom:0.5rem;">
+          <select id="role_select" class="form-select" onchange="goToEditor()" style="max-width:260px;">
+            <option value="">Select Role</option>
+            {% for r in roles %}
+              <option value="{{ r.id }}">{{ r.name }}</option>
+            {% endfor %}
+          </select>
+          <a id="edit_dashboard_btn" href="#" class="nm-pill-link" style="display:none; margin-top:0.35rem;">
+            Go to Dashboard Layout Editor
+          </a>
+        </div>
+
+        <div class="nm-table-wrap nm-scroll-y" style="max-height: 160px;">
+          <table class="nm-table">
+            <thead>
+            <tr>
+              <th>Role ID</th>
+              <th>Name</th>
+              <th>Panel</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% if roles %}
+              {% for r in roles %}
+                <tr>
+                  <td>{{ r.id }}</td>
+                  <td>{{ r.name }}</td>
+                  <td>
+                    <a class="nm-pill-link" href="{{ url_for('edit_dashboard', role_id=r.id) }}">
+                      Edit Panel
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="3" class="nm-empty">No roles created yet.</td>
+              </tr>
+            {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <hr class="nm-divider">
+
+      <!-- Tasks list + delete -->
+      <div>
+        <div class="nm-section-title">Company Tasks</div>
+        <div class="nm-table-wrap nm-scroll-y" style="max-height: 200px;">
+          <table class="nm-table">
+            <thead>
+            <tr>
+              <th>Title</th>
+              <th>Assigned To (ID)</th>
+              <th>Status</th>
+              <th>Priority</th>
+              <th>File</th>
+              <th>Action</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% if tasks %}
+              {% for t in tasks %}
+                <tr>
+                  <td>{{ t.title }}</td>
+                  <td>{{ t.assigned_to or "—" }}</td>
+                  <td><span class="nm-badge">{{ t.status or "Pending" }}</span></td>
+                  <td>{{ t.priority or "Medium" }}</td>
+                  <td>
+                    {% if t.file_url %}
+                      <a href="{{ t.file_url }}" target="_blank" class="nm-link">View</a>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>
+                    <form method="post"
+                          action="{{ url_for('admin_delete_task', task_id=t.id) }}"
+                          onsubmit="return confirm('Delete this task?');">
+                      <button type="submit" class="nm-btn-danger">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" class="nm-empty">No tasks created yet.</td>
+              </tr>
+            {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT side: forms -->
+    <section class="nm-card">
+      <div class="nm-card-header">
+        <div>
+          <div class="nm-card-title">Admin Actions</div>
+          <div class="nm-card-sub">Create roles, add employees, and assign tasks.</div>
+        </div>
+        <a href="{{ url_for('reports_page') }}" class="nm-pill-link">
+          View Reports
+        </a>
+      </div>
+
+      <!-- Create Role -->
+      <div>
+        <div class="nm-section-title">Create Role</div>
+        <form method="post" action="{{ url_for('create_role') }}" class="nm-form-grid">
+          <div class="nm-field">
+            <label for="role_name">Role Name</label>
+            <input id="role_name" name="role_name" placeholder="Eg. Manager, Team Lead" required>
+          </div>
+          <div class="nm-form-actions">
+            <button class="nm-btn-primary" type="submit">Create Role</button>
+          </div>
+        </form>
+      </div>
+
+      <hr class="nm-divider">
+
+      <!-- Create Employee -->
+      <div>
+        <div class="nm-section-title">Create Employee</div>
+        <form method="post" action="{{ url_for('create_employee') }}" class="nm-form-grid">
+          <div class="nm-field">
+            <label for="emp_name">Full Name</label>
+            <input id="emp_name" name="name" placeholder="Name" required>
+          </div>
+          <div class="nm-field">
+            <label for="emp_email">Email</label>
+            <input id="emp_email" type="email" name="email" placeholder="Email" required>
+          </div>
+          <div class="nm-field">
+            <label for="emp_password">Password (optional)</label>
+            <input id="emp_password" name="password" placeholder="Password (optional)">
+          </div>
+          <div class="nm-field">
+            <label for="emp_role">Role</label>
+            <select id="emp_role" name="role_id" required>
+              <option value="">Select Role</option>
+              {% for r in roles %}
+                <option value="{{ r.id }}">{{ r.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="nm-form-actions">
+            <button class="nm-btn-primary" type="submit">Create Employee</button>
+          </div>
+        </form>
+      </div>
+
+      <hr class="nm-divider">
+
+      <!-- Create Task -->
+      <div>
+        <div class="nm-section-title">Create Task</div>
+        <form method="post" action="{{ url_for('create_task') }}" enctype="multipart/form-data" class="nm-form-grid">
+          <div class="nm-field">
+            <label for="task_title">Title</label>
+            <input id="task_title" type="text" name="title" required placeholder="Eg. Prepare report">
+          </div>
+          <div class="nm-field">
+            <label for="task_description">Description</label>
+            <textarea id="task_description" name="description" placeholder="Task details"></textarea>
+          </div>
+          <div class="nm-field">
+            <label for="task_assigned_to">Assign To</label>
+            <select id="task_assigned_to" name="assigned_to">
+              <option value="">Unassigned</option>
+              {% for u in users %}
+                <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="nm-field">
+            <label for="task_file">Upload File</label>
+            <input id="task_file" type="file" name="task_file">
+          </div>
+          <div class="nm-field">
+            <label for="task_priority">Priority</label>
+            <select id="task_priority" name="priority">
+              <option>Low</option>
+              <option selected>Medium</option>
+              <option>High</option>
+            </select>
+          </div>
+          <div class="nm-field">
+            <label for="task_deadline">Deadline</label>
+            <input id="task_deadline" type="date" name="deadline">
+          </div>
+          <div class="nm-form-actions">
+            <button class="nm-btn-primary" type="submit">Create Task</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
 </div>
-
-<a id="edit_dashboard_btn" href="#" class="btn btn-info mb-3" style="display:none;">
-    Go to Dashboard Layout Editor
-</a>
 
 <script>
 function goToEditor(){
@@ -117,7 +529,7 @@ function goToEditor(){
     const role_id = select.value;
     const btn = document.getElementById('edit_dashboard_btn');
     if(role_id){
-        btn.style.display = 'inline-block';
+        btn.style.display = 'inline-flex';
         btn.href = '/admin/edit_dashboard/' + role_id;
     } else {
         btn.style.display = 'none';
@@ -125,4 +537,5 @@ function goToEditor(){
     }
 }
 </script>
+
 {% endblock %}

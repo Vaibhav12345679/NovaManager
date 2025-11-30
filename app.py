@@ -401,6 +401,63 @@ def create_employee():
     flash(f"✅ Employee created (password: {password}) — share securely.", "success")
     return redirect(url_for("admin_dashboard"))
 
+# ---------------- Delete Employee (Admin) ----------------
+@app.route("/admin/delete_employee/<user_id>", methods=["POST"])
+@login_required
+def admin_delete_employee(user_id):
+    prof = get_profile()
+    if not prof or prof.get("role") != "company_admin":
+        return "Unauthorized", 403
+
+    company_id = prof["company_id"]
+
+    # Make sure the employee belongs to this company and is not an admin
+    try:
+        resp = (
+            sb_admin.table("profiles")
+            .select("*")
+            .eq("id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        emp = resp.data
+    except Exception:
+        emp = None
+
+    if not emp:
+        flash("Employee not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    if emp.get("company_id") != company_id:
+        flash("You cannot delete employees from another company.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    if emp.get("role") == "company_admin":
+        flash("You cannot delete a company admin from here.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    # 1) Delete profile row
+    try:
+        sb_admin.table("profiles").delete().eq("id", user_id).execute()
+    except Exception as e:
+        flash("Failed to delete employee profile: " + str(e), "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    # 2) Delete auth user (optional but recommended)
+    try:
+        sb_admin.auth.admin.delete_user(user_id)
+    except Exception:
+        flash("Employee auth user could not be deleted, but profile was removed.", "warning")
+
+    # 3) Optionally unassign their tasks
+    try:
+        sb_admin.table("tasks").update({"assigned_to": None}).eq("assigned_to", user_id).execute()
+    except Exception:
+        pass  # not critical
+
+    flash("✅ Employee deleted.", "success")
+    return redirect(url_for("admin_dashboard"))
+
 # ---------------- Create Task (Admin) ----------------
 @app.route("/admin/create_task", methods=["POST"])
 @login_required
@@ -435,6 +492,46 @@ def create_task():
     }).execute()
 
     flash("✅ Task created.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+# ---------------- Delete Task (Admin) ----------------
+@app.route("/admin/delete_task/<task_id>", methods=["POST"])
+@login_required
+def admin_delete_task(task_id):
+    prof = get_profile()
+    if not prof or prof.get("role") != "company_admin":
+        return "Unauthorized", 403
+
+    company_id = prof["company_id"]
+
+    # Check task belongs to this company
+    try:
+        resp = (
+            sb_admin.table("tasks")
+            .select("*")
+            .eq("id", task_id)
+            .maybe_single()
+            .execute()
+        )
+        task = resp.data
+    except Exception:
+        task = None
+
+    if not task:
+        flash("Task not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    if task.get("company_id") != company_id:
+        flash("You cannot delete tasks from another company.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    try:
+        sb_admin.table("tasks").delete().eq("id", task_id).execute()
+    except Exception as e:
+        flash("Failed to delete task: " + str(e), "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    flash("✅ Task deleted.", "success")
     return redirect(url_for("admin_dashboard"))
 
 # ---------------- Reports ----------------
@@ -628,3 +725,4 @@ def manager_upload_task_file(task_id):
 # ---------------- Run ----------------
 if __name__ == "__main__":
     app.run(debug=True)
+

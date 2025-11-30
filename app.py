@@ -74,6 +74,24 @@ def get_profile():
         return None
 
 
+def get_company_name(company_id):
+    if not company_id:
+        return None
+    try:
+        comp_resp = (
+            sb_admin.table("companies")
+            .select("name")
+            .eq("id", company_id)
+            .maybe_single()
+            .execute()
+        )
+        if comp_resp.data:
+            return comp_resp.data.get("name")
+    except Exception:
+        return None
+    return None
+
+
 # ----------------- Routes -----------------
 @app.route("/")
 def index():
@@ -83,22 +101,7 @@ def index():
     - If logged in, passes profile + company name so you can show brand.
     """
     prof = get_profile()
-    company = None
-
-    if prof and prof.get("company_id"):
-        try:
-            comp_resp = (
-                sb_admin.table("companies")
-                .select("name")
-                .eq("id", prof["company_id"])
-                .maybe_single()
-                .execute()
-            )
-            if comp_resp.data:
-                company = comp_resp.data.get("name")
-        except Exception:
-            company = None
-
+    company = get_company_name(prof["company_id"]) if prof and prof.get("company_id") else None
     return render_template("index.html", profile=prof, company=company)
 
 
@@ -260,9 +263,12 @@ def admin_dashboard():
     tasks_resp = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute()
     roles_resp = sb_admin.table("roles").select("*").eq("company_id", company_id).execute()
 
+    company = get_company_name(company_id)
+
     return render_template(
         "admin_dashboard.html",
         profile=prof,
+        company=company,
         users=users_resp.data or [],
         tasks=tasks_resp.data or [],
         roles=roles_resp.data or []
@@ -280,18 +286,19 @@ def role_dashboard(role_id):
       dashboard_codes/<role_id>/
 
     Inside that folder, we load the first .py file found.
-    That Python file MUST define:
+    That Python file SHOULD define:
 
       def render_dashboard(profile, users, tasks, roles) -> str:
           return "<html>...</html>"
 
-    And we return that HTML string directly.
+    If not, we show a safe default dashboard (no error).
     """
     prof = get_profile()
     if not prof:
         return redirect(url_for("login"))
 
     company_id = prof["company_id"]
+    company_name = get_company_name(company_id)
 
     # Permissions:
     # - company_admin can view any role dashboard
@@ -306,30 +313,126 @@ def role_dashboard(role_id):
 
     # Folder for this role
     role_dir = os.path.join("dashboard_codes", str(role_id))
-    if not os.path.isdir(role_dir):
-        return f"No dashboard code uploaded for this role (folder {role_dir} not found).", 404
+    custom_html = None
 
-    # Pick the first .py file in that folder
-    py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
-    if not py_files:
-        return "No .py dashboard file found in this role folder.", 404
+    if os.path.isdir(role_dir):
+        py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
+        if py_files:
+            module_path = os.path.join(role_dir, py_files[0])
+            try:
+                mod = SourceFileLoader(f"role_module_{role_id}", module_path).load_module()
+                if hasattr(mod, "render_dashboard"):
+                    try:
+                        custom_html = mod.render_dashboard(prof, users, tasks, roles)
+                    except Exception as e:
+                        # custom code crashed; we'll fall back to default
+                        custom_html = None
+                # if no render_dashboard attr, we just skip to fallback
+            except Exception:
+                custom_html = None
 
-    module_path = os.path.join(role_dir, py_files[0])
+    # If valid custom HTML is provided, return it
+    if isinstance(custom_html, str) and custom_html.strip():
+        return custom_html
 
-    try:
-        mod = SourceFileLoader(f"role_module_{role_id}", module_path).load_module()
-    except Exception as e:
-        return f"Error loading dashboard module: {e}", 500
+    # -------- DEFAULT SAFE DASHBOARD (no error) --------
+    # Show company name + tasks for that role
+    my_tasks = [t for t in tasks if str(t.get("assigned_to") or "") == str(prof.get("id"))]
 
-    if not hasattr(mod, "render_dashboard"):
-        return "Dashboard module has no render_dashboard(profile, users, tasks, roles) function", 500
+    html_tasks = ""
+    if my_tasks:
+        for t in my_tasks:
+            html_tasks += f"<li><strong>{t.get('title')}</strong> – {t.get('status') or 'Pending'}</li>"
+    else:
+        html_tasks = "<li>No tasks assigned yet.</li>"
 
-    try:
-        html = mod.render_dashboard(prof, users, tasks, roles)
-    except Exception as e:
-        return f"Error rendering dashboard: {e}", 500
+    role_label = prof.get("role") or "employee"
 
-    return html
+    default_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{company_name or 'Dashboard'} - {role_label}</title>
+    <style>
+        body {{
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0f172a;
+            color: #e5e7eb;
+            margin: 0;
+            padding: 0;
+        }}
+        .wrapper {{
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 3rem;
+        }}
+        .card {{
+            background: rgba(15,23,42,0.96);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            box-shadow: 0 22px 45px rgba(0,0,0,0.45);
+            border: 1px solid rgba(148,163,184,0.25);
+        }}
+        h1 {{
+            font-size: 1.8rem;
+            margin-bottom: 0.25rem;
+        }}
+        h2 {{
+            font-size: 1.1rem;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }}
+        .pill {{
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            background: rgba(56,189,248,0.08);
+            color: #38bdf8;
+            font-size: 0.8rem;
+        }}
+        ul {{
+            list-style: none;
+            padding-left: 1rem;
+        }}
+        li {{
+            margin-bottom: 0.35rem;
+        }}
+        a {{
+            color: #38bdf8;
+            text-decoration: none;
+        }}
+        a:hover {{
+            text-decoration: underline;
+        }}
+        .brand {{
+            font-size: 0.9rem;
+            color: #9ca3af;
+            margin-bottom: 0.75rem;
+        }}
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="card">
+            <div class="brand">{company_name or "Your Company"}</div>
+            <h1>Hi, {prof.get('full_name') or 'User'}</h1>
+            <span class="pill">{role_label}</span>
+
+            <h2>Your Tasks</h2>
+            <ul>
+                {html_tasks}
+            </ul>
+
+            <p style="margin-top:1.5rem;">
+                <a href="/logout">Log out</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    return default_html
 
 
 # ---------------- Edit Dashboard Code (ADMIN creates custom panels here) ----------------
@@ -337,11 +440,11 @@ def role_dashboard(role_id):
 @login_required
 def edit_dashboard(role_id):
     """
-    This is your PANEL CREATION TOOL.
+    PANEL CREATION TOOL.
 
     - It uses folder: dashboard_codes/<role_id>/
     - You can upload a .py file OR edit existing ones.
-    - That .py file should implement render_dashboard(...) as described above.
+    - That .py file can implement render_dashboard(...) as described above.
     """
     prof = get_profile()
     if not prof or prof.get("role") != "company_admin":
@@ -541,9 +644,12 @@ def employee_dashboard():
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total > 0 else 0
 
-    return render_template("employee_dashboard.html", profile=prof, tasks=tasks, percent=percent)
+    company = get_company_name(prof.get("company_id"))
+
+    return render_template("employee_dashboard.html", profile=prof, company=company, tasks=tasks, percent=percent)
 
 
 # ---------------- Run ----------------
 if __name__ == "__main__":
     app.run(debug=True)
+

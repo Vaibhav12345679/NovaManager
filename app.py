@@ -10,6 +10,9 @@ import chardet  # pip install chardet
 # NEW: for catching DB errors like duplicate key
 from postgrest.exceptions import APIError
 
+# NEW: for dynamic role dashboards
+from importlib.machinery import SourceFileLoader
+
 # ----------------- Load .env -----------------
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -69,15 +72,8 @@ def get_profile():
 # ----------------- Routes -----------------
 @app.route("/")
 def index():
-    prof = get_profile()
-    if prof:
-        role = prof.get("role")
-        # Admin → admin dashboard
-        if role == "company_admin":
-            return redirect(url_for("admin_dashboard"))
-        # Everyone else → employee dashboard (no more /role/<id> redirect)
-        return redirect(url_for("employee_dashboard"))
-    # Not logged in → landing page
+    # Always show landing page with Login / Register buttons
+    # No redirect based on role or login status
     return render_template("index.html")
 
 # --------- Register/Login/Logout ---------
@@ -167,7 +163,6 @@ def register():
             }).execute()
         except Exception as e:
             flash("Profile creation failed: " + str(e), "danger")
-            # you could also clean up company + user here if you want strict consistency
             return redirect(url_for("register"))
 
         flash("Registered. Please login.", "success")
@@ -196,6 +191,7 @@ def login():
             return redirect(url_for("login"))
 
         session["access_token"] = res.session.access_token
+        # After login, we still go to "/" (landing)
         return redirect(url_for("index"))
 
     return render_template("login.html")
@@ -226,6 +222,65 @@ def admin_dashboard():
         roles=roles_resp.data or []
     )
 
+# ---------------- Role-based Dynamic Dashboard (PANELS) ----------------
+@app.route("/role/<role_id>")
+@login_required
+def role_dashboard(role_id):
+    """
+    Dynamic dashboard per role.
+
+    Looks for Python files in:
+      dashboard_codes/<role_id>/
+
+    First .py file found is loaded as a module and must define:
+      def render_dashboard(profile, users, tasks, roles) -> str:
+          return "<html>...</html>"
+    """
+    prof = get_profile()
+    if not prof:
+        return redirect(url_for("login"))
+
+    company_id = prof["company_id"]
+
+    # Permissions:
+    # - company_admin can view any role dashboard
+    # - normal employee can only view their own role_id dashboard
+    if prof.get("role") != "company_admin" and str(prof.get("role_id")) != str(role_id):
+        return "Unauthorized", 403
+
+    # Real data from Supabase
+    users = sb_admin.table("profiles").select("*").eq("company_id", company_id).execute().data or []
+    tasks = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute().data or []
+    roles = sb_admin.table("roles").select("*").eq("company_id", company_id).execute().data or []
+
+    # Folder for this role
+    role_dir = os.path.join("dashboard_codes", str(role_id))
+    if not os.path.isdir(role_dir):
+        return f"No dashboard code uploaded for this role (folder {role_dir} not found).", 404
+
+    # Pick the first .py file in that folder
+    py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
+    if not py_files:
+        return "No .py dashboard file found in this role folder.", 404
+
+    module_path = os.path.join(role_dir, py_files[0])
+
+    try:
+        mod = SourceFileLoader(f"role_module_{role_id}", module_path).load_module()
+    except Exception as e:
+        return f"Error loading dashboard module: {e}", 500
+
+    if not hasattr(mod, "render_dashboard"):
+        return "Dashboard module has no render_dashboard(profile, users, tasks, roles) function", 500
+
+    try:
+        html = mod.render_dashboard(prof, users, tasks, roles)
+    except Exception as e:
+        return f"Error rendering dashboard: {e}", 500
+
+    return html
+
+# ---------------- Edit Dashboard Code (Admin only) ----------------
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
 def edit_dashboard(role_id):
@@ -403,7 +458,7 @@ def reports_page():
                            total=total, completed=completed, pending=pending,
                            tasks_per_employee=tasks_per_employee)
 
-# ---------------- Employee Dashboard ----------------
+# ---------------- Employee Dashboard (optional fallback) ----------------
 @app.route("/employee")
 @login_required
 def employee_dashboard():

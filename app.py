@@ -72,14 +72,12 @@ def index():
     prof = get_profile()
     if prof:
         role = prof.get("role")
+        # Admin → admin dashboard
         if role == "company_admin":
             return redirect(url_for("admin_dashboard"))
-        elif prof.get("role_id"):
-            role_info = sb_admin.table("roles").select("*").eq("id", prof["role_id"]).maybe_single().execute()
-            if role_info.data:
-                return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
-        else:
-            return redirect(url_for("employee_dashboard"))
+        # Everyone else → employee dashboard (no more /role/<id> redirect)
+        return redirect(url_for("employee_dashboard"))
+    # Not logged in → landing page
     return render_template("index.html")
 
 # --------- Register/Login/Logout ---------

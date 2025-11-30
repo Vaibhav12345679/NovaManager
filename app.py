@@ -83,7 +83,11 @@ def index():
         if role in ("company_admin", "manager"):
             return redirect(url_for("admin_dashboard"))
 
-        # Everyone else -> employee dashboard
+        # If this user has a role_id, use dynamic role dashboard
+        if prof.get("role_id"):
+            return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
+
+        # Fallback: generic employee dashboard
         return redirect(url_for("employee_dashboard"))
 
     # Not logged in
@@ -217,21 +221,60 @@ def admin_dashboard():
     )
 
 
-# ---------------- SAFE stub for role_dashboard ----------------
-# This exists ONLY so url_for('role_dashboard', role_id=...) never crashes.
+# ---------------- Dynamic Role Dashboard (PER ROLE EMP DASHBOARD) ----------------
 @app.route("/role/<role_id>")
 @login_required
 def role_dashboard(role_id):
+    """
+    This route loads a Python dashboard file for the given role_id.
+    Example:
+      dashboard_codes/<role_id>/manager.py
+      dashboard_codes/<role_id>/employee_sales.py
+    Each such file must define:  render_dashboard(profile, users, tasks, roles) -> str(HTML)
+    """
     prof = get_profile()
     if not prof:
         return redirect(url_for("login"))
 
-    # Admin & manager: just go to admin panel
-    if prof.get("role") in ("company_admin", "manager"):
-        return redirect(url_for("admin_dashboard"))
+    company_id = prof["company_id"]
 
-    # Others: go to normal employee dashboard
-    return redirect(url_for("employee_dashboard"))
+    # Permissions:
+    # - Admin & manager can see any role dashboard in the company
+    # - Normal user can only see their own role_id dashboard
+    if prof.get("role") not in ("company_admin", "manager") and str(prof.get("role_id")) != str(role_id):
+        return "Unauthorized", 403
+
+    # Real data from Supabase
+    users = sb_admin.table("profiles").select("*").eq("company_id", company_id).execute().data or []
+    tasks = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute().data or []
+    roles = sb_admin.table("roles").select("*").eq("company_id", company_id).execute().data or []
+
+    # Folder for this role
+    role_dir = os.path.join("dashboard_codes", str(role_id))
+    if not os.path.isdir(role_dir):
+        return f"No dashboard configured for this role (folder {role_dir} not found).", 404
+
+    # Pick a .py file to use (first .py file in that folder)
+    py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
+    if not py_files:
+        return "No .py dashboard file found for this role.", 404
+
+    module_path = os.path.join(role_dir, py_files[0])
+
+    try:
+        mod = SourceFileLoader("role_module", module_path).load_module()
+    except Exception as e:
+        return f"Error loading dashboard module: {e}", 500
+
+    if not hasattr(mod, "render_dashboard"):
+        return "Dashboard module has no render_dashboard(profile, users, tasks, roles) function", 500
+
+    try:
+        html = mod.render_dashboard(prof, users, tasks, roles)
+    except Exception as e:
+        return f"Error rendering dashboard: {e}", 500
+
+    return html
 
 
 # ---------------- Edit Dashboard Code (Admin only) ----------------
@@ -409,10 +452,15 @@ def reports_page():
                            tasks_per_employee=tasks_per_employee)
 
 
-# ---------------- Employee Dashboard ----------------
+# ---------------- Fallback Employee Dashboard (shared template) ----------------
 @app.route("/employee")
 @login_required
 def employee_dashboard():
+    """
+    Fallback simple dashboard.
+    Normally employees with role_id will be redirected to /role/<role_id>.
+    This is just a backup if some user has no role or no dashboard configured.
+    """
     prof = get_profile()
     if not prof:
         return redirect(url_for("login"))

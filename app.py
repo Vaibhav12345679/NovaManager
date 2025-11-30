@@ -7,10 +7,10 @@ from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
 import chardet  # pip install chardet
 
-# NEW: for catching DB errors like duplicate key
+# Catch DB errors (duplicate key, FK, etc.)
 from postgrest.exceptions import APIError
 
-# NEW: for dynamic role dashboards
+# For dynamic role dashboards (custom panels)
 from importlib.machinery import SourceFileLoader
 
 # ----------------- Load .env -----------------
@@ -36,8 +36,10 @@ ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "png", "jpg", "jpeg"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 # ----------------- Helpers -----------------
 def login_required(f):
@@ -48,6 +50,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapped
 
+
 def get_current_user():
     token = session.get("access_token")
     if not token:
@@ -57,6 +60,7 @@ def get_current_user():
         return resp.user if resp and resp.user else None
     except Exception:
         return None
+
 
 def get_profile():
     user = get_current_user()
@@ -69,13 +73,14 @@ def get_profile():
     except Exception:
         return None
 
+
 # ----------------- Routes -----------------
 @app.route("/")
 def index():
     """
     Home page:
-    - Always show index.html
-    - If logged in, also fetch company name to show brand.
+    - Always shows index.html
+    - If logged in, passes profile + company name so you can show brand.
     """
     prof = get_profile()
     company = None
@@ -83,8 +88,7 @@ def index():
     if prof and prof.get("company_id"):
         try:
             comp_resp = (
-                sb_admin
-                .table("companies")
+                sb_admin.table("companies")
                 .select("name")
                 .eq("id", prof["company_id"])
                 .maybe_single()
@@ -96,6 +100,7 @@ def index():
             company = None
 
     return render_template("index.html", profile=prof, company=company)
+
 
 # --------- Register/Login/Logout ---------
 @app.route("/register", methods=["GET", "POST"])
@@ -111,7 +116,7 @@ def register():
             flash("All fields are required.", "danger")
             return redirect(url_for("register"))
 
-        # 1) Create auth user using SERVICE ROLE (admin) so it's confirmed
+        # 1) Create auth user using SERVICE ROLE (admin) so it's confirmed immediately
         try:
             created = sb_admin.auth.admin.create_user({
                 "email": email,
@@ -143,14 +148,13 @@ def register():
         except APIError as e:
             if e.code == "23505":
                 flash("A company with this email already exists. Please log in instead.", "warning")
-                # optional: delete user to avoid orphan
+                # optional: delete auth user so it isn't orphaned
                 try:
                     sb_admin.auth.admin.delete_user(user_id)
                 except Exception:
                     pass
                 return redirect(url_for("login"))
             flash(f"Company creation failed: {e.message}", "danger")
-            # optional: delete user
             try:
                 sb_admin.auth.admin.delete_user(user_id)
             except Exception:
@@ -180,7 +184,7 @@ def register():
                 "id": user_id,
                 "full_name": admin_name,
                 "company_id": company_id,
-                "role": "company_admin"
+                "role": "company_admin"   # this guy is the owner
             }).execute()
         except Exception as e:
             flash("Profile creation failed: " + str(e), "danger")
@@ -190,6 +194,7 @@ def register():
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -211,13 +216,12 @@ def login():
             flash("❌ Login failed. Please check your email and password.", "danger")
             return redirect(url_for("login"))
 
-        # store token
+        # Store token in session
         session["access_token"] = res.session.access_token
 
-        # 🔥 Now redirect to respective dashboard
+        # Redirect based on role
         prof = get_profile()
         if not prof:
-            # if somehow no profile, just go home
             return redirect(url_for("index"))
 
         role = prof.get("role")
@@ -226,23 +230,22 @@ def login():
         if role == "company_admin":
             return redirect(url_for("admin_dashboard"))
         elif role == "manager":
-            # manager dashboard via panel system if role_id exists
             if role_id:
                 return redirect(url_for("role_dashboard", role_id=role_id))
-            # fallback if no role_id set
             return redirect(url_for("employee_dashboard"))
         else:
-            # normal employee
             if role_id:
                 return redirect(url_for("role_dashboard", role_id=role_id))
             return redirect(url_for("employee_dashboard"))
 
     return render_template("login.html")
 
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
 
 # ---------------- Admin Dashboard ----------------
 @app.route("/admin")
@@ -265,19 +268,24 @@ def admin_dashboard():
         roles=roles_resp.data or []
     )
 
-# ---------------- Role-based Dynamic Dashboard (PANELS) ----------------
+
+# ---------------- Role-based Dynamic Dashboard (CUSTOM PANELS) ----------------
 @app.route("/role/<role_id>")
 @login_required
 def role_dashboard(role_id):
     """
-    Dynamic dashboard per role.
+    Custom dashboard per role (Panel system).
 
-    Looks for Python files in:
+    For role with id = <role_id>, we look into folder:
       dashboard_codes/<role_id>/
 
-    First .py file found is loaded as a module and must define:
+    Inside that folder, we load the first .py file found.
+    That Python file MUST define:
+
       def render_dashboard(profile, users, tasks, roles) -> str:
           return "<html>...</html>"
+
+    And we return that HTML string directly.
     """
     prof = get_profile()
     if not prof:
@@ -287,7 +295,7 @@ def role_dashboard(role_id):
 
     # Permissions:
     # - company_admin can view any role dashboard
-    # - normal employee/manager can only view their own role_id dashboard
+    # - normal user/manager can only view their own role_id
     if prof.get("role") != "company_admin" and str(prof.get("role_id")) != str(role_id):
         return "Unauthorized", 403
 
@@ -323,15 +331,23 @@ def role_dashboard(role_id):
 
     return html
 
-# ---------------- Edit Dashboard Code (Admin only) ----------------
+
+# ---------------- Edit Dashboard Code (ADMIN creates custom panels here) ----------------
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
 def edit_dashboard(role_id):
+    """
+    This is your PANEL CREATION TOOL.
+
+    - It uses folder: dashboard_codes/<role_id>/
+    - You can upload a .py file OR edit existing ones.
+    - That .py file should implement render_dashboard(...) as described above.
+    """
     prof = get_profile()
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    # Get role
+    # Get role info for context
     role_resp = sb_admin.table("roles").select("*").eq("id", role_id).maybe_single().execute()
     role = role_resp.data
     if not role:
@@ -357,7 +373,7 @@ def edit_dashboard(role_id):
                 flash(f"✅ Uploaded file {filename}", "success")
                 current_file = filename  # Automatically switch to the uploaded file
 
-        # Handle saving edits
+        # Handle saving edits to currently selected file
         if "file_content" in request.form and current_file:
             save_path = os.path.join(role_dir, current_file)
             with open(save_path, "w", encoding="utf-8") as f:
@@ -365,7 +381,7 @@ def edit_dashboard(role_id):
             flash(f"✅ Saved {current_file}", "success")
             return redirect(url_for("edit_dashboard", role_id=role_id, file=current_file))
     else:
-        # GET request
+        # GET request – choose file to load into editor
         current_file = request.args.get("file") or (files[0] if files else None)
 
     # Load file content safely
@@ -387,6 +403,7 @@ def edit_dashboard(role_id):
         file_content=file_content
     )
 
+
 # ---------------- Create Role ----------------
 @app.route("/admin/create_role", methods=["POST"])
 @login_required
@@ -402,6 +419,7 @@ def create_role():
     }).execute()
     flash(f"✅ Role '{role_name}' created.", "success")
     return redirect(url_for("admin_dashboard"))
+
 
 # ---------------- Create Employee ----------------
 @app.route("/admin/create_employee", methods=["POST"])
@@ -433,12 +451,13 @@ def create_employee():
         "id": user_id,
         "full_name": name,
         "company_id": company_id,
-        "role": "employee",
+        "role": "employee",   # you can set 'manager' manually in DB if needed
         "role_id": role_id
     }).execute()
 
     flash(f"✅ Employee created (password: {password}) — share securely.", "success")
     return redirect(url_for("admin_dashboard"))
+
 
 # ---------------- Create Task ----------------
 @app.route("/admin/create_task", methods=["POST"])
@@ -476,6 +495,7 @@ def create_task():
     flash("✅ Task created.", "success")
     return redirect(url_for("admin_dashboard"))
 
+
 # ---------------- Reports ----------------
 @app.route("/admin/reports")
 @login_required
@@ -497,9 +517,14 @@ def reports_page():
         assigned = t.get("assigned_to") or "Unassigned"
         tasks_per_employee[assigned] = tasks_per_employee.get(assigned, 0) + 1
 
-    return render_template("reports.html",
-                           total=total, completed=completed, pending=pending,
-                           tasks_per_employee=tasks_per_employee)
+    return render_template(
+        "reports.html",
+        total=total,
+        completed=completed,
+        pending=pending,
+        tasks_per_employee=tasks_per_employee
+    )
+
 
 # ---------------- Employee Dashboard (fallback) ----------------
 @app.route("/employee")
@@ -518,7 +543,7 @@ def employee_dashboard():
 
     return render_template("employee_dashboard.html", profile=prof, tasks=tasks, percent=percent)
 
+
 # ---------------- Run ----------------
 if __name__ == "__main__":
     app.run(debug=True)
-

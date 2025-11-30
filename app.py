@@ -7,11 +7,11 @@ from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
 import chardet  # pip install chardet
 
-# Catch DB errors (duplicate key, FK, etc.)
+# NEW: DB error handling
 from postgrest.exceptions import APIError
 
-# For dynamic role dashboards (custom panels)
-from importlib.machinery import SourceFileLoader
+# NEW: for loading role dashboards from Python files
+import importlib.util
 
 # ----------------- Load .env -----------------
 load_dotenv()
@@ -48,6 +48,7 @@ def login_required(f):
         if "access_token" not in session:
             return redirect(url_for("login"))
         return f(*args, **kwargs)
+
     return wrapped
 
 
@@ -68,140 +69,33 @@ def get_profile():
         return None
     uid = user.id
     try:
-        res = sb_admin.table("profiles").select("*").eq("id", uid).maybe_single().execute()
+        res = (
+            sb_admin.table("profiles")
+            .select("*")
+            .eq("id", uid)
+            .maybe_single()
+            .execute()
+        )
         return res.data
     except Exception:
         return None
 
 
-def get_company_name(company_id):
-    if not company_id:
-        return None
-    try:
-        comp_resp = (
-            sb_admin.table("companies")
-            .select("name")
-            .eq("id", company_id)
-            .maybe_single()
-            .execute()
-        )
-        if comp_resp.data:
-            return comp_resp.data.get("name")
-    except Exception:
-        return None
-    return None
-
-
 # ----------------- Routes -----------------
 @app.route("/")
 def index():
-    """
-    Home page:
-    - Always shows index.html
-    - If logged in, passes profile + company name so you can show brand.
-    """
     prof = get_profile()
-    company = get_company_name(prof["company_id"]) if prof and prof.get("company_id") else None
-    return render_template("index.html", profile=prof, company=company)
-    
-# ---------------- Admin: Delete Employee ----------------
-@app.route("/admin/delete_employee/<user_id>", methods=["POST"])
-@login_required
-def admin_delete_employee(user_id):
-    prof = get_profile()
-    if not prof or prof.get("role") != "company_admin":
-        return "Unauthorized", 403
-
-    company_id = prof["company_id"]
-
-    # Make sure this user belongs to the same company and is not the admin
-    try:
-        resp = (
-            sb_admin.table("profiles")
-            .select("*")
-            .eq("id", user_id)
-            .maybe_single()
-            .execute()
-        )
-        target = resp.data
-    except Exception:
-        target = None
-
-    if not target:
-        flash("Employee not found.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    if target.get("company_id") != company_id:
-        flash("You cannot delete employees from another company.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    if str(target.get("id")) == str(prof.get("id")):
-        flash("You cannot delete your own admin account.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    # Optional: unassign tasks from this employee
-    try:
-        sb_admin.table("tasks").update({"assigned_to": None}).eq("assigned_to", user_id).execute()
-    except Exception:
-        pass
-
-    # Delete profile row
-    try:
-        sb_admin.table("profiles").delete().eq("id", user_id).execute()
-    except Exception as e:
-        flash(f"Failed to delete profile: {e}", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    # Delete auth user in Supabase
-    try:
-        sb_admin.auth.admin.delete_user(user_id)
-    except Exception:
-        pass
-
-    flash("✅ Employee deleted.", "success")
-    return redirect(url_for("admin_dashboard"))
-
-
-# ---------------- Admin: Delete Task ----------------
-@app.route("/admin/delete_task/<task_id>", methods=["POST"])
-@login_required
-def admin_delete_task(task_id):
-    prof = get_profile()
-    if not prof or prof.get("role") != "company_admin":
-        return "Unauthorized", 403
-
-    company_id = prof["company_id"]
-
-    # Ensure task belongs to this company
-    try:
-        resp = (
-            sb_admin.table("tasks")
-            .select("*")
-            .eq("id", task_id)
-            .maybe_single()
-            .execute()
-        )
-        task = resp.data
-    except Exception:
-        task = None
-
-    if not task:
-        flash("Task not found.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    if task.get("company_id") != company_id:
-        flash("You cannot delete tasks from another company.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    # Delete task
-    try:
-        sb_admin.table("tasks").delete().eq("id", task_id).execute()
-    except Exception as e:
-        flash(f"Failed to delete task: {e}", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    flash("✅ Task deleted.", "success")
-    return redirect(url_for("admin_dashboard"))
+    if prof:
+        role = prof.get("role")
+        # After login → go to appropriate dashboard
+        if role == "company_admin":
+            return redirect(url_for("admin_dashboard"))
+        elif prof.get("role_id"):
+            return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
+        else:
+            return redirect(url_for("employee_dashboard"))
+    # not logged in → show landing page
+    return render_template("index.html")
 
 
 # --------- Register/Login/Logout ---------
@@ -218,17 +112,22 @@ def register():
             flash("All fields are required.", "danger")
             return redirect(url_for("register"))
 
-        # 1) Create auth user using SERVICE ROLE (admin) so it's confirmed immediately
+        # 1) Create auth user using SERVICE ROLE (admin) so it's confirmed
         try:
-            created = sb_admin.auth.admin.create_user({
-                "email": email,
-                "password": password,
-                "email_confirm": True
-            })
+            created = sb_admin.auth.admin.create_user(
+                {
+                    "email": email,
+                    "password": password,
+                    "email_confirm": True,
+                }
+            )
         except Exception as e:
             msg = str(e)
             if "already registered" in msg.lower() or "already exists" in msg.lower():
-                flash("An account with this email already exists. Please log in.", "warning")
+                flash(
+                    "An account with this email already exists. Please log in.",
+                    "warning",
+                )
                 return redirect(url_for("login"))
             flash("Sign up error: " + msg, "danger")
             return redirect(url_for("register"))
@@ -242,15 +141,24 @@ def register():
 
         # 2) Insert into companies (handle duplicate company email)
         try:
-            comp = sb_admin.table("companies").insert({
-                "name": company_name,
-                "admin_user_id": user_id,
-                "email": email
-            }).execute()
+            comp = (
+                sb_admin.table("companies")
+                .insert(
+                    {
+                        "name": company_name,
+                        "admin_user_id": user_id,
+                        "email": email,
+                    }
+                )
+                .execute()
+            )
         except APIError as e:
             if e.code == "23505":
-                flash("A company with this email already exists. Please log in instead.", "warning")
-                # optional: delete auth user so it isn't orphaned
+                flash(
+                    "A company with this email already exists. Please log in instead.",
+                    "warning",
+                )
+                # optional: delete user to avoid orphan
                 try:
                     sb_admin.auth.admin.delete_user(user_id)
                 except Exception:
@@ -282,12 +190,14 @@ def register():
 
         # 3) Create admin profile
         try:
-            sb_admin.table("profiles").insert({
-                "id": user_id,
-                "full_name": admin_name,
-                "company_id": company_id,
-                "role": "company_admin"   # this guy is the owner
-            }).execute()
+            sb_admin.table("profiles").insert(
+                {
+                    "id": user_id,
+                    "full_name": admin_name,
+                    "company_id": company_id,
+                    "role": "company_admin",
+                }
+            ).execute()
         except Exception as e:
             flash("Profile creation failed: " + str(e), "danger")
             return redirect(url_for("register"))
@@ -309,7 +219,9 @@ def login():
             return redirect(url_for("login"))
 
         try:
-            res = sb.auth.sign_in_with_password({"email": email, "password": password})
+            res = sb.auth.sign_in_with_password(
+                {"email": email, "password": password}
+            )
         except Exception as e:
             flash("❌ Login failed: " + str(e), "danger")
             return redirect(url_for("login"))
@@ -318,27 +230,8 @@ def login():
             flash("❌ Login failed. Please check your email and password.", "danger")
             return redirect(url_for("login"))
 
-        # Store token in session
         session["access_token"] = res.session.access_token
-
-        # Redirect based on role
-        prof = get_profile()
-        if not prof:
-            return redirect(url_for("index"))
-
-        role = prof.get("role")
-        role_id = prof.get("role_id")
-
-        if role == "company_admin":
-            return redirect(url_for("admin_dashboard"))
-        elif role == "manager":
-            if role_id:
-                return redirect(url_for("role_dashboard", role_id=role_id))
-            return redirect(url_for("employee_dashboard"))
-        else:
-            if role_id:
-                return redirect(url_for("role_dashboard", role_id=role_id))
-            return redirect(url_for("employee_dashboard"))
+        return redirect(url_for("index"))
 
     return render_template("login.html")
 
@@ -358,199 +251,109 @@ def admin_dashboard():
         return "Unauthorized", 403
 
     company_id = prof["company_id"]
-    users_resp = sb_admin.table("profiles").select("*").eq("company_id", company_id).execute()
-    tasks_resp = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute()
-    roles_resp = sb_admin.table("roles").select("*").eq("company_id", company_id).execute()
-
-    company = get_company_name(company_id)
+    users_resp = (
+        sb_admin.table("profiles").select("*").eq("company_id", company_id).execute()
+    )
+    tasks_resp = (
+        sb_admin.table("tasks").select("*").eq("company_id", company_id).execute()
+    )
+    roles_resp = (
+        sb_admin.table("roles").select("*").eq("company_id", company_id).execute()
+    )
 
     return render_template(
         "admin_dashboard.html",
         profile=prof,
-        company=company,
         users=users_resp.data or [],
         tasks=tasks_resp.data or [],
-        roles=roles_resp.data or []
+        roles=roles_resp.data or [],
     )
 
 
-# ---------------- Role-based Dynamic Dashboard (CUSTOM PANELS) ----------------
-@app.route("/role/<role_id>")
+# --------- Dynamic Role Dashboard (for manager & others) ---------
+@app.route("/role/<int:role_id>")
 @login_required
 def role_dashboard(role_id):
-    """
-    Custom dashboard per role (Panel system).
-
-    For role with id = <role_id>, we look into folder:
-      dashboard_codes/<role_id>/
-
-    Inside that folder, we load the first .py file found.
-    That Python file SHOULD define:
-
-      def render_dashboard(profile, users, tasks, roles) -> str:
-          return "<html>...</html>"
-
-    If not, we show a safe default dashboard (no error).
-    """
     prof = get_profile()
     if not prof:
         return redirect(url_for("login"))
 
+    # Admins should use /admin
+    if prof.get("role") == "company_admin":
+        return redirect(url_for("admin_dashboard"))
+
+    # Ensure user is actually this role
+    if prof.get("role_id") != role_id:
+        # redirect to their real role dashboard
+        if prof.get("role_id"):
+            return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
+        return redirect(url_for("employee_dashboard"))
+
     company_id = prof["company_id"]
-    company_name = get_company_name(company_id)
+    users_resp = (
+        sb_admin.table("profiles").select("*").eq("company_id", company_id).execute()
+    )
+    tasks_resp = (
+        sb_admin.table("tasks").select("*").eq("company_id", company_id).execute()
+    )
+    roles_resp = (
+        sb_admin.table("roles").select("*").eq("company_id", company_id).execute()
+    )
 
-    # Permissions:
-    # - company_admin can view any role dashboard
-    # - normal user/manager can only view their own role_id
-    if prof.get("role") != "company_admin" and str(prof.get("role_id")) != str(role_id):
-        return "Unauthorized", 403
+    users = users_resp.data or []
+    tasks = tasks_resp.data or []
+    roles = roles_resp.data or []
 
-    # Real data from Supabase
-    users = sb_admin.table("profiles").select("*").eq("company_id", company_id).execute().data or []
-    tasks = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute().data or []
-    roles = sb_admin.table("roles").select("*").eq("company_id", company_id).execute().data or []
-
-    # Folder for this role
+    # Try to load a Python dashboard in dashboard_codes/<role_id>/*.py
+    html = None
     role_dir = os.path.join("dashboard_codes", str(role_id))
-    custom_html = None
-
     if os.path.isdir(role_dir):
         py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
         if py_files:
             module_path = os.path.join(role_dir, py_files[0])
             try:
-                mod = SourceFileLoader(f"role_module_{role_id}", module_path).load_module()
+                spec = importlib.util.spec_from_file_location(
+                    f"dashboard_{role_id}", module_path
+                )
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
                 if hasattr(mod, "render_dashboard"):
-                    try:
-                        custom_html = mod.render_dashboard(prof, users, tasks, roles)
-                    except Exception as e:
-                        # custom code crashed; we'll fall back to default
-                        custom_html = None
-                # if no render_dashboard attr, we just skip to fallback
-            except Exception:
-                custom_html = None
+                    html = mod.render_dashboard(prof, users, tasks, roles)
+            except Exception as e:
+                # if dashboard python fails, show generic page instead of 500
+                flash(f"Dashboard render error: {e}", "danger")
 
-    # If valid custom HTML is provided, return it
-    if isinstance(custom_html, str) and custom_html.strip():
-        return custom_html
+    if html is None:
+        # fallback: normal employee dashboard
+        user_tasks = [
+            t for t in tasks if str(t.get("assigned_to") or "") == str(prof["id"])
+        ]
+        total = len(user_tasks)
+        completed = sum(
+            1 for t in user_tasks if (t.get("status") or "").lower() == "completed"
+        )
+        percent = int((completed / total) * 100) if total > 0 else 0
+        return render_template(
+            "employee_dashboard.html",
+            profile=prof,
+            tasks=user_tasks,
+            percent=percent,
+        )
 
-    # -------- DEFAULT SAFE DASHBOARD (no error) --------
-    # Show company name + tasks for that role
-    my_tasks = [t for t in tasks if str(t.get("assigned_to") or "") == str(prof.get("id"))]
-
-    html_tasks = ""
-    if my_tasks:
-        for t in my_tasks:
-            html_tasks += f"<li><strong>{t.get('title')}</strong> – {t.get('status') or 'Pending'}</li>"
-    else:
-        html_tasks = "<li>No tasks assigned yet.</li>"
-
-    role_label = prof.get("role") or "employee"
-
-    default_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>{company_name or 'Dashboard'} - {role_label}</title>
-    <style>
-        body {{
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: #0f172a;
-            color: #e5e7eb;
-            margin: 0;
-            padding: 0;
-        }}
-        .wrapper {{
-            max-width: 960px;
-            margin: 0 auto;
-            padding: 2rem 1.5rem 3rem;
-        }}
-        .card {{
-            background: rgba(15,23,42,0.96);
-            border-radius: 1rem;
-            padding: 1.75rem;
-            box-shadow: 0 22px 45px rgba(0,0,0,0.45);
-            border: 1px solid rgba(148,163,184,0.25);
-        }}
-        h1 {{
-            font-size: 1.8rem;
-            margin-bottom: 0.25rem;
-        }}
-        h2 {{
-            font-size: 1.1rem;
-            margin-top: 1.5rem;
-            margin-bottom: 0.75rem;
-        }}
-        .pill {{
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 999px;
-            background: rgba(56,189,248,0.08);
-            color: #38bdf8;
-            font-size: 0.8rem;
-        }}
-        ul {{
-            list-style: none;
-            padding-left: 1rem;
-        }}
-        li {{
-            margin-bottom: 0.35rem;
-        }}
-        a {{
-            color: #38bdf8;
-            text-decoration: none;
-        }}
-        a:hover {{
-            text-decoration: underline;
-        }}
-        .brand {{
-            font-size: 0.9rem;
-            color: #9ca3af;
-            margin-bottom: 0.75rem;
-        }}
-    </style>
-</head>
-<body>
-    <div class="wrapper">
-        <div class="card">
-            <div class="brand">{company_name or "Your Company"}</div>
-            <h1>Hi, {prof.get('full_name') or 'User'}</h1>
-            <span class="pill">{role_label}</span>
-
-            <h2>Your Tasks</h2>
-            <ul>
-                {html_tasks}
-            </ul>
-
-            <p style="margin-top:1.5rem;">
-                <a href="/logout">Log out</a>
-            </p>
-        </div>
-    </div>
-</body>
-</html>
-"""
-    return default_html
+    return html
 
 
-# ---------------- Edit Dashboard Code (ADMIN creates custom panels here) ----------------
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
 def edit_dashboard(role_id):
-    """
-    PANEL CREATION TOOL.
-
-    - It uses folder: dashboard_codes/<role_id>/
-    - You can upload a .py file OR edit existing ones.
-    - That .py file can implement render_dashboard(...) as described above.
-    """
     prof = get_profile()
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    # Get role info for context
-    role_resp = sb_admin.table("roles").select("*").eq("id", role_id).maybe_single().execute()
+    # Get role
+    role_resp = (
+        sb_admin.table("roles").select("*").eq("id", role_id).maybe_single().execute()
+    )
     role = role_resp.data
     if not role:
         return "Role not found", 404
@@ -563,7 +366,6 @@ def edit_dashboard(role_id):
 
     # Determine which file to edit
     if request.method == "POST":
-        # If coming from the file select dropdown
         current_file = request.form.get("current_file") or (files[0] if files else None)
 
         # Handle file upload
@@ -573,9 +375,9 @@ def edit_dashboard(role_id):
                 filename = secure_filename(uploaded_file.filename)
                 uploaded_file.save(os.path.join(role_dir, filename))
                 flash(f"✅ Uploaded file {filename}", "success")
-                current_file = filename  # Automatically switch to the uploaded file
+                current_file = filename
 
-        # Handle saving edits to currently selected file
+        # Handle saving edits
         if "file_content" in request.form and current_file:
             save_path = os.path.join(role_dir, current_file)
             with open(save_path, "w", encoding="utf-8") as f:
@@ -583,7 +385,6 @@ def edit_dashboard(role_id):
             flash(f"✅ Saved {current_file}", "success")
             return redirect(url_for("edit_dashboard", role_id=role_id, file=current_file))
     else:
-        # GET request – choose file to load into editor
         current_file = request.args.get("file") or (files[0] if files else None)
 
     # Load file content safely
@@ -602,7 +403,7 @@ def edit_dashboard(role_id):
         role=role,
         files=files,
         current_file=current_file,
-        file_content=file_content
+        file_content=file_content,
     )
 
 
@@ -615,15 +416,14 @@ def create_role():
         return "Unauthorized", 403
 
     role_name = request.form.get("role_name")
-    sb_admin.table("roles").insert({
-        "company_id": prof["company_id"],
-        "name": role_name
-    }).execute()
+    sb_admin.table("roles").insert(
+        {"company_id": prof["company_id"], "name": role_name}
+    ).execute()
     flash(f"✅ Role '{role_name}' created.", "success")
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Create Employee ----------------
+# ---------------- Create Employee (Admin) ----------------
 @app.route("/admin/create_employee", methods=["POST"])
 @login_required
 def create_employee():
@@ -637,11 +437,13 @@ def create_employee():
     role_id = request.form.get("role_id")
     company_id = prof["company_id"]
 
-    created = sb_admin.auth.admin.create_user({
-        "email": email,
-        "password": password,
-        "email_confirm": True
-    })
+    created = sb_admin.auth.admin.create_user(
+        {
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+        }
+    )
 
     if not created or not created.user:
         flash("❌ Failed to create user.", "danger")
@@ -649,19 +451,21 @@ def create_employee():
 
     user_id = created.user.id
 
-    sb_admin.table("profiles").insert({
-        "id": user_id,
-        "full_name": name,
-        "company_id": company_id,
-        "role": "employee",   # you can set 'manager' manually in DB if needed
-        "role_id": role_id
-    }).execute()
+    sb_admin.table("profiles").insert(
+        {
+            "id": user_id,
+            "full_name": name,
+            "company_id": company_id,
+            "role": "employee",
+            "role_id": role_id,
+        }
+    ).execute()
 
     flash(f"✅ Employee created (password: {password}) — share securely.", "success")
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Create Task ----------------
+# ---------------- Create Task (Admin) ----------------
 @app.route("/admin/create_task", methods=["POST"])
 @login_required
 def create_task():
@@ -683,16 +487,18 @@ def create_task():
         task_file.save(file_path)
         file_url = f"/static/task_files/{filename}"
 
-    sb_admin.table("tasks").insert({
-        "title": title,
-        "description": description,
-        "company_id": prof["company_id"],
-        "assigned_to": assigned_to,
-        "priority": priority,
-        "deadline": deadline,
-        "status": "Pending",
-        "file_url": file_url
-    }).execute()
+    sb_admin.table("tasks").insert(
+        {
+            "title": title,
+            "description": description,
+            "company_id": prof["company_id"],
+            "assigned_to": assigned_to,
+            "priority": priority,
+            "deadline": deadline,
+            "status": "Pending",
+            "file_url": file_url,
+        }
+    ).execute()
 
     flash("✅ Task created.", "success")
     return redirect(url_for("admin_dashboard"))
@@ -707,11 +513,15 @@ def reports_page():
         return "Unauthorized", 403
 
     company_id = prof["company_id"]
-    tasks_resp = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute()
+    tasks_resp = (
+        sb_admin.table("tasks").select("*").eq("company_id", company_id).execute()
+    )
     tasks = tasks_resp.data or []
 
     total = len(tasks)
-    completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
+    completed = sum(
+        1 for t in tasks if (t.get("status") or "").lower() == "completed"
+    )
     pending = total - completed
 
     tasks_per_employee = {}
@@ -724,11 +534,11 @@ def reports_page():
         total=total,
         completed=completed,
         pending=pending,
-        tasks_per_employee=tasks_per_employee
+        tasks_per_employee=tasks_per_employee,
     )
 
 
-# ---------------- Employee Dashboard (fallback) ----------------
+# ---------------- Employee Dashboard (generic) ----------------
 @app.route("/employee")
 @login_required
 def employee_dashboard():
@@ -737,15 +547,182 @@ def employee_dashboard():
         return redirect(url_for("login"))
 
     user_id = prof["id"]
-    tasks_resp = sb_admin.table("tasks").select("*").eq("assigned_to", user_id).execute()
+    tasks_resp = (
+        sb_admin.table("tasks").select("*").eq("assigned_to", user_id).execute()
+    )
     tasks = tasks_resp.data or []
     total = len(tasks)
-    completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
+    completed = sum(
+        1 for t in tasks if (t.get("status") or "").lower() == "completed"
+    )
     percent = int((completed / total) * 100) if total > 0 else 0
 
-    company = get_company_name(prof.get("company_id"))
+    return render_template(
+        "employee_dashboard.html", profile=prof, tasks=tasks, percent=percent
+    )
 
-    return render_template("employee_dashboard.html", profile=prof, company=company, tasks=tasks, percent=percent)
+
+# ---------------- Manager: Create Task ----------------
+@app.route("/manager/create_task", methods=["POST"])
+@login_required
+def manager_create_task():
+    prof = get_profile()
+    if not prof or prof.get("role") != "manager":
+        return "Unauthorized", 403
+
+    title = request.form.get("title")
+    description = request.form.get("description")
+    assigned_to = request.form.get("assigned_to") or None
+    priority = request.form.get("priority") or "Medium"
+    deadline = request.form.get("deadline") or None
+
+    if not title:
+        flash("Task title is required.", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    file_url = None
+    task_file = request.files.get("task_file")
+    if task_file and task_file.filename != "":
+        filename = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        task_file.save(file_path)
+        file_url = f"/static/task_files/{filename}"
+
+    try:
+        sb_admin.table("tasks").insert(
+            {
+                "title": title,
+                "description": description,
+                "company_id": prof["company_id"],
+                "assigned_to": assigned_to,
+                "priority": priority,
+                "deadline": deadline,
+                "status": "Pending",
+                "file_url": file_url,
+            }
+        ).execute()
+    except Exception as e:
+        flash("Manager task creation failed: " + str(e), "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    flash("✅ Task created by manager.", "success")
+    return redirect(f"/role/{prof.get('role_id')}")
+
+
+# ---------------- Manager: Create Employee ----------------
+@app.route("/manager/create_employee", methods=["POST"])
+@login_required
+def manager_create_employee():
+    prof = get_profile()
+    if not prof or prof.get("role") != "manager":
+        return "Unauthorized", 403
+
+    name = request.form.get("name")
+    email = request.form.get("email")
+    password = request.form.get("password") or gen_salt(8)
+    role_id = request.form.get("role_id")
+    company_id = prof["company_id"]
+
+    if not (name and email and role_id):
+        flash("Name, email and role are required.", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    try:
+        created = sb_admin.auth.admin.create_user(
+            {
+                "email": email,
+                "password": password,
+                "email_confirm": True,
+            }
+        )
+    except Exception as e:
+        flash("❌ Manager failed to create user: " + str(e), "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    if not created or not created.user:
+        flash("❌ Manager failed to create user.", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    user_id = created.user.id
+
+    try:
+        sb_admin.table("profiles").insert(
+            {
+                "id": user_id,
+                "full_name": name,
+                "company_id": company_id,
+                "role": "employee",  # manager cannot create admins
+                "role_id": role_id,
+            }
+        ).execute()
+    except Exception as e:
+        flash("Profile creation failed: " + str(e), "danger")
+        try:
+            sb_admin.auth.admin.delete_user(user_id)
+        except Exception:
+            pass
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    flash(
+        f"✅ Employee created by manager (password: {password}) — share securely.",
+        "success",
+    )
+    return redirect(f"/role/{prof.get('role_id')}")
+
+
+# ---------------- Manager: Upload Completed Task File ----------------
+@app.route("/manager/upload_task_file/<task_id>", methods=["POST"])
+@login_required
+def manager_upload_task_file(task_id):
+    prof = get_profile()
+    if not prof or prof.get("role") != "manager":
+        return "Unauthorized", 403
+
+    # check that this task belongs to same company and is assigned to this manager
+    try:
+        resp = (
+            sb_admin.table("tasks")
+            .select("*")
+            .eq("id", task_id)
+            .maybe_single()
+            .execute()
+        )
+        task = resp.data
+    except Exception:
+        task = None
+
+    if not task:
+        flash("Task not found.", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    if task.get("company_id") != prof["company_id"]:
+        flash("You cannot modify tasks from another company.", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    if str(task.get("assigned_to") or "") != str(prof.get("id") or ""):
+        flash("You can only upload files for your own tasks.", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    task_file = request.files.get("task_file")
+    if not task_file or task_file.filename == "":
+        flash("Please choose a file to upload.", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    filename = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+    file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    task_file.save(file_path)
+    file_url = f"/static/task_files/{filename}"
+
+    try:
+        sb_admin.table("tasks").update(
+            {"file_url": file_url, "status": "Completed"}
+        ).eq("id", task_id).execute()
+    except Exception as e:
+        flash("Failed to update task file: " + str(e), "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
+
+    flash("✅ Task file uploaded.", "success")
+    return redirect(f"/role/{prof.get('role_id')}")
 
 
 # ---------------- Run ----------------

@@ -1,6 +1,4 @@
 import os
-from importlib.machinery import SourceFileLoader
-
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from supabase import create_client, Client
@@ -9,7 +7,11 @@ from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
 import chardet  # pip install chardet
 
+# catch Supabase/PostgREST DB errors (like duplicate key)
 from postgrest.exceptions import APIError
+
+# loader for dynamic role dashboards
+from importlib.machinery import SourceFileLoader
 
 # ----------------- Load .env -----------------
 load_dotenv()
@@ -78,19 +80,17 @@ def index():
     prof = get_profile()
     if prof:
         role = prof.get("role")
-
-        # Admin & Manager -> admin dashboard
-        if role in ("company_admin", "manager"):
+        if role == "company_admin":
             return redirect(url_for("admin_dashboard"))
-
-        # If this user has a role_id, use dynamic role dashboard
-        if prof.get("role_id"):
-            return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
-
-        # Fallback: generic employee dashboard
-        return redirect(url_for("employee_dashboard"))
-
-    # Not logged in
+        # if user has a role_id, use role-based custom panel
+        elif prof.get("role_id"):
+            role_info = sb_admin.table("roles").select("*").eq("id", prof["role_id"]).maybe_single().execute()
+            if role_info.data:
+                return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
+            else:
+                return redirect(url_for("employee_dashboard"))
+        else:
+            return redirect(url_for("employee_dashboard"))
     return render_template("index.html")
 
 
@@ -103,6 +103,7 @@ def register():
         email = request.form.get("email")
         password = request.form.get("password")
 
+        # simple required fields check
         if not (company_name and admin_name and email and password):
             flash("All fields are required.", "danger")
             return redirect(url_for("register"))
@@ -112,6 +113,7 @@ def register():
             signup = sb.auth.sign_up({"email": email, "password": password})
         except Exception as e:
             msg = str(e)
+            # handle common "user already registered" style errors
             if "already registered" in msg.lower() or "already exists" in msg.lower():
                 flash("An account with this email already exists. Please log in.", "warning")
                 return redirect(url_for("login"))
@@ -125,7 +127,7 @@ def register():
 
         user_id = user.id
 
-        # 2) Insert into companies
+        # 2) Insert into companies, handle duplicate email gracefully
         try:
             comp = sb_admin.table("companies").insert({
                 "name": company_name,
@@ -133,6 +135,7 @@ def register():
                 "email": email
             }).execute()
         except APIError as e:
+            # Unique violation (duplicate company email)
             if e.code == "23505":
                 flash("A company with this email already exists. Please log in instead.", "warning")
                 return redirect(url_for("login"))
@@ -179,6 +182,7 @@ def login():
         try:
             res = sb.auth.sign_in_with_password({"email": email, "password": password})
         except Exception as e:
+            # Supabase error, usually "Invalid login credentials"
             flash("❌ Login failed: " + str(e), "danger")
             return redirect(url_for("login"))
 
@@ -198,13 +202,12 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ---------------- Admin / Manager Dashboard ----------------
+# ---------------- Admin Dashboard ----------------
 @app.route("/admin")
 @login_required
 def admin_dashboard():
     prof = get_profile()
-    # allow both admin and manager
-    if not prof or prof.get("role") not in ("company_admin", "manager"):
+    if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
     company_id = prof["company_id"]
@@ -221,16 +224,20 @@ def admin_dashboard():
     )
 
 
-# ---------------- Dynamic Role Dashboard (PER ROLE EMP DASHBOARD) ----------------
+# ---------------- Role-based Dynamic Dashboard ----------------
 @app.route("/role/<role_id>")
 @login_required
 def role_dashboard(role_id):
     """
-    This route loads a Python dashboard file for the given role_id.
-    Example:
-      dashboard_codes/<role_id>/manager.py
-      dashboard_codes/<role_id>/employee_sales.py
-    Each such file must define:  render_dashboard(profile, users, tasks, roles) -> str(HTML)
+    Dynamic dashboard per role.
+
+    For role with id = <role_id>, we look into folder:
+      dashboard_codes/<role_id>/
+    and load the first .py file there.
+
+    That .py file must define:
+      def render_dashboard(profile, users, tasks, roles) -> str:
+          return "<html>...</html>"
     """
     prof = get_profile()
     if not prof:
@@ -239,9 +246,9 @@ def role_dashboard(role_id):
     company_id = prof["company_id"]
 
     # Permissions:
-    # - Admin & manager can see any role dashboard in the company
-    # - Normal user can only see their own role_id dashboard
-    if prof.get("role") not in ("company_admin", "manager") and str(prof.get("role_id")) != str(role_id):
+    # - company_admin can view any role dashboard
+    # - normal user can only see their own role_id
+    if prof.get("role") != "company_admin" and str(prof.get("role_id")) != str(role_id):
         return "Unauthorized", 403
 
     # Real data from Supabase
@@ -249,20 +256,20 @@ def role_dashboard(role_id):
     tasks = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute().data or []
     roles = sb_admin.table("roles").select("*").eq("company_id", company_id).execute().data or []
 
-    # Folder for this role
+    # Folder for this role (your old logic)
     role_dir = os.path.join("dashboard_codes", str(role_id))
     if not os.path.isdir(role_dir):
-        return f"No dashboard configured for this role (folder {role_dir} not found).", 404
+        return f"No dashboard code uploaded for this role (folder {role_dir} not found).", 404
 
-    # Pick a .py file to use (first .py file in that folder)
+    # Pick the first .py file in that folder (e.g. manager.py, employee.py, etc.)
     py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
     if not py_files:
-        return "No .py dashboard file found for this role.", 404
+        return "No .py dashboard file found in this role folder.", 404
 
     module_path = os.path.join(role_dir, py_files[0])
 
     try:
-        mod = SourceFileLoader("role_module", module_path).load_module()
+        mod = SourceFileLoader(f"role_module_{role_id}", module_path).load_module()
     except Exception as e:
         return f"Error loading dashboard module: {e}", 500
 
@@ -277,7 +284,7 @@ def role_dashboard(role_id):
     return html
 
 
-# ---------------- Edit Dashboard Code (Admin only) ----------------
+# ---------------- Edit Dashboard Code (Admin only, old panel editor) ----------------
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
 def edit_dashboard(role_id):
@@ -285,6 +292,7 @@ def edit_dashboard(role_id):
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
+    # Get role
     role_resp = sb_admin.table("roles").select("*").eq("id", role_id).maybe_single().execute()
     role = role_resp.data
     if not role:
@@ -293,19 +301,24 @@ def edit_dashboard(role_id):
     role_dir = os.path.join("dashboard_codes", role_id)
     os.makedirs(role_dir, exist_ok=True)
 
+    # List all files in role folder
     files = os.listdir(role_dir)
 
+    # Determine which file to edit
     if request.method == "POST":
+        # If coming from the file select dropdown
         current_file = request.form.get("current_file") or (files[0] if files else None)
 
+        # Handle file upload
         if "new_file" in request.files:
             uploaded_file = request.files["new_file"]
-            if uploaded_file and uploaded_file.filename:
+            if uploaded_file.filename != "":
                 filename = secure_filename(uploaded_file.filename)
                 uploaded_file.save(os.path.join(role_dir, filename))
                 flash(f"✅ Uploaded file {filename}", "success")
-                current_file = filename
+                current_file = filename  # Automatically switch to the uploaded file
 
+        # Handle saving edits
         if "file_content" in request.form and current_file:
             save_path = os.path.join(role_dir, current_file)
             with open(save_path, "w", encoding="utf-8") as f:
@@ -313,8 +326,10 @@ def edit_dashboard(role_id):
             flash(f"✅ Saved {current_file}", "success")
             return redirect(url_for("edit_dashboard", role_id=role_id, file=current_file))
     else:
+        # GET request
         current_file = request.args.get("file") or (files[0] if files else None)
 
+    # Load file content safely
     file_content = ""
     if current_file:
         file_path = os.path.join(role_dir, current_file)
@@ -334,7 +349,7 @@ def edit_dashboard(role_id):
     )
 
 
-# ---------------- Create Role (Admin ONLY) ----------------
+# ---------------- Create Role ----------------
 @app.route("/admin/create_role", methods=["POST"])
 @login_required
 def create_role():
@@ -351,12 +366,12 @@ def create_role():
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Create Employee (Admin + Manager) ----------------
+# ---------------- Create Employee ----------------
 @app.route("/admin/create_employee", methods=["POST"])
 @login_required
 def create_employee():
     prof = get_profile()
-    if not prof or prof.get("role") not in ("company_admin", "manager"):
+    if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
     name = request.form.get("name")
@@ -381,7 +396,7 @@ def create_employee():
         "id": user_id,
         "full_name": name,
         "company_id": company_id,
-        "role": "employee",  # manager cannot create admins
+        "role": "employee",
         "role_id": role_id
     }).execute()
 
@@ -389,12 +404,12 @@ def create_employee():
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Create Task (Admin + Manager) ----------------
+# ---------------- Create Task ----------------
 @app.route("/admin/create_task", methods=["POST"])
 @login_required
 def create_task():
     prof = get_profile()
-    if not prof or prof.get("role") not in ("company_admin", "manager"):
+    if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
     title = request.form.get("title")
@@ -426,7 +441,7 @@ def create_task():
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Reports (Admin only) ----------------
+# ---------------- Reports ----------------
 @app.route("/admin/reports")
 @login_required
 def reports_page():
@@ -452,15 +467,10 @@ def reports_page():
                            tasks_per_employee=tasks_per_employee)
 
 
-# ---------------- Fallback Employee Dashboard (shared template) ----------------
+# ---------------- Employee Dashboard (fallback) ----------------
 @app.route("/employee")
 @login_required
 def employee_dashboard():
-    """
-    Fallback simple dashboard.
-    Normally employees with role_id will be redirected to /role/<role_id>.
-    This is just a backup if some user has no role or no dashboard configured.
-    """
     prof = get_profile()
     if not prof:
         return redirect(url_for("login"))
@@ -472,6 +482,7 @@ def employee_dashboard():
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total > 0 else 0
 
+    # you can keep your existing employee_dashboard.html or just make a simple one
     return render_template("employee_dashboard.html", profile=prof, tasks=tasks, percent=percent)
 
 

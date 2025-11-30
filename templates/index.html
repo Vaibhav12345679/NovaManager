@@ -1,5 +1,37 @@
 {% extends "base.html" %}
+
 {% block content %}
-<h1>Welcome to NovaManager</h1>
-<p><a href="{{ url_for('register') }}">Register Company (Admin)</a> | <a href="{{ url_for('login') }}">Login</a></p>
+  {% if profile %}
+    <!-- Logged-in view -->
+    <h1>{{ company or "Your Company" }} Dashboard</h1>
+    <p>Welcome, <strong>{{ profile.full_name }}</strong> ({{ profile.role|capitalize }})</p>
+
+    {% if profile.role == 'company_admin' %}
+      <p>
+        <a href="{{ url_for('admin_dashboard') }}">Go to Admin Dashboard</a>
+      </p>
+    {% else %}
+      {% if profile.role_id %}
+        <p>
+          <a href="{{ url_for('role_dashboard', role_id=profile.role_id) }}">Go to Your Panel</a>
+        </p>
+      {% else %}
+        <p>
+          <a href="{{ url_for('employee_dashboard') }}">Go to Employee Dashboard</a>
+        </p>
+      {% endif %}
+    {% endif %}
+
+    <p style="margin-top: 1rem;">
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </p>
+
+  {% else %}
+    <!-- Not logged in -->
+    <h1>Welcome to NovaManager</h1>
+    <p>
+      <a href="{{ url_for('register') }}">Register Company (Admin)</a> |
+      <a href="{{ url_for('login') }}">Login</a>
+    </p>
+  {% endif %}
 {% endblock %}

@@ -232,14 +232,18 @@ def edit_dashboard(role_id):
         # If coming from the file select dropdown
         current_file = request.form.get("current_file") or (files[0] if files else None)
 
-        # Handle file upload
+        # 🔹 Handle file upload (PYTHON ONLY)
         if "new_file" in request.files:
             uploaded_file = request.files["new_file"]
-            if uploaded_file.filename != "":
+            if uploaded_file and uploaded_file.filename:
                 filename = secure_filename(uploaded_file.filename)
-                uploaded_file.save(os.path.join(role_dir, filename))
-                flash(f"✅ Uploaded file {filename}", "success")
-                current_file = filename  # Automatically switch to the uploaded file
+                # 🔥 Only allow .py files for dashboard logic
+                if not filename.lower().endswith(".py"):
+                    flash("❌ Only .py files are allowed for dashboards.", "danger")
+                else:
+                    uploaded_file.save(os.path.join(role_dir, filename))
+                    flash(f"✅ Uploaded file {filename}", "success")
+                    current_file = filename  # Automatically switch to the uploaded file
 
         # Handle saving edits
         if "file_content" in request.form and current_file:

@@ -568,13 +568,25 @@ def employee_dashboard():
         return redirect(url_for("login"))
 
     user_id = prof["id"]
-    tasks_resp = sb_admin.table("tasks").select("*").eq("assigned_to", user_id).execute()
+
+    tasks_resp = (
+        sb_admin.table("tasks")
+        .select("*")
+        .eq("assigned_to", user_id)
+        .execute()
+    )
+
     tasks = tasks_resp.data or []
     total = len(tasks)
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total > 0 else 0
 
-    return render_template("employee_dashboard.html", profile=prof, tasks=tasks, percent=percent)
+    return render_template(
+        "employee_dashboard.html",
+        profile=prof,
+        tasks=tasks,
+        percent=percent
+    )
 
 # ---------------- Manager: Create Task ----------------
 @app.route("/manager/create_task", methods=["POST"])

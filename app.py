@@ -232,8 +232,7 @@ def admin_dashboard():
         roles=roles_resp.data or []
     )
 
-# -------- Role-based dashboard (Manager etc) --------
-@app.route("/role/<int:role_id>")
+@app.route("/role/<role_id>")
 @login_required
 def role_dashboard(role_id):
     prof = get_profile()
@@ -244,24 +243,42 @@ def role_dashboard(role_id):
     if prof.get("role") == "company_admin":
         return redirect(url_for("admin_dashboard"))
 
-    # If logged-in user's role_id doesn't match URL, redirect to their own role
-    if prof.get("role_id") != role_id:
+    # Ensure user only accesses their own role dashboard
+    if str(prof.get("role_id")) != str(role_id):
         if prof.get("role_id"):
             return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
         return redirect(url_for("employee_dashboard"))
 
     company_id = prof["company_id"]
-    users_resp = sb_admin.table("profiles").select("*").eq("company_id", company_id).execute()
-    tasks_resp = sb_admin.table("tasks").select("*").eq("company_id", company_id).execute()
-    roles_resp = sb_admin.table("roles").select("*").eq("company_id", company_id).execute()
 
-    users = users_resp.data or []
-    tasks = tasks_resp.data or []
-    roles = roles_resp.data or []
+    users = (
+        sb_admin.table("profiles")
+        .select("*")
+        .eq("company_id", company_id)
+        .execute()
+        .data or []
+    )
 
-    # Try to load dashboard_codes/<role_id>/*.py with render_dashboard(...)
+    tasks = (
+        sb_admin.table("tasks")
+        .select("*")
+        .eq("company_id", company_id)
+        .execute()
+        .data or []
+    )
+
+    roles = (
+        sb_admin.table("roles")
+        .select("*")
+        .eq("company_id", company_id)
+        .execute()
+        .data or []
+    )
+
+    # Load dashboard python renderer
     html = None
     role_dir = os.path.join("dashboard_codes", str(role_id))
+
     if os.path.isdir(role_dir):
         py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
         if py_files:
@@ -270,20 +287,29 @@ def role_dashboard(role_id):
                 spec = importlib.util.spec_from_file_location(f"dashboard_{role_id}", module_path)
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)
+
                 if hasattr(mod, "render_dashboard"):
                     html = mod.render_dashboard(prof, users, tasks, roles)
+
             except Exception as e:
                 flash(f"Dashboard render error: {e}", "danger")
 
-    # Fallback → generic employee dashboard
+    # Fallback → employee dashboard
     if html is None:
-        user_tasks = [t for t in tasks if str(t.get("assigned_to") or "") == str(prof["id"])]
+        user_tasks = [t for t in tasks if str(t.get("assigned_to")) == str(prof["id"])]
         total = len(user_tasks)
         completed = sum(1 for t in user_tasks if (t.get("status") or "").lower() == "completed")
-        percent = int((completed / total) * 100) if total > 0 else 0
-        return render_template("employee_dashboard.html", profile=prof, tasks=user_tasks, percent=percent)
+        percent = int((completed / total) * 100) if total else 0
+
+        return render_template(
+            "employee_dashboard.html",
+            profile=prof,
+            tasks=user_tasks,
+            percent=percent
+        )
 
     return html
+
 
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required

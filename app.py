@@ -760,6 +760,38 @@ def manager_upload_task_file(task_id):
     flash("✅ Task file uploaded.", "success")
     return redirect(f"/role/{prof.get('role_id')}")
 
+@app.route("/manager/send_appeal", methods=["POST"])
+@login_required
+def manager_send_appeal():
+    prof = get_profile()
+    if not prof:
+        return "Unauthorized", 403
+
+    # Only Marketing Lead (role_id = 2) allowed
+    if prof.get("role_id") != 2:
+        return "Unauthorized", 403
+
+    message = request.form.get("message")
+    if not message:
+        flash("Message cannot be empty.", "danger")
+        return redirect(url_for("role_dashboard", role_id=2))
+
+    try:
+        sb_admin.table("appeals").insert({
+            "company_id": prof["company_id"],
+            "sender_id": prof["id"],
+            "sender_name": prof["full_name"],
+            "message": message,
+            "status": "open"
+        }).execute()
+    except Exception as e:
+        flash(f"Failed to send appeal: {e}", "danger")
+        return redirect(url_for("role_dashboard", role_id=2))
+
+    flash("✅ Appeal sent to Admin / Manager", "success")
+    return redirect(url_for("role_dashboard", role_id=2))
+
+
 # ---------------- Run ----------------
 if __name__ == "__main__":
     app.run(debug=True)

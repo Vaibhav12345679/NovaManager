@@ -765,39 +765,55 @@ def manager_upload_task_file(task_id):
 @login_required
 def send_appeal():
     prof = get_profile()
-    if not prof or prof.get("role_id") != 2:
+    if not prof:
         return "Unauthorized", 403
 
     message = request.form.get("message")
-    file = request.files.get("file")
+    to_role = request.form.get("to_role")  # admin / manager
 
+    if not message:
+        flash("Appeal message required", "danger")
+        return redirect(request.referrer)
+
+    file = request.files.get("file")
     file_url = None
     file_name = None
 
+    # ---- FILE UPLOAD TO SUPABASE STORAGE ----
     if file and file.filename:
-        filename = secure_filename(file.filename)
-        unique = f"{gen_salt(8)}_{filename}"
-        path = f"appeals/{prof['company_id']}/{unique}"
-
-        sb_admin.storage.from_("appeals").upload(
-            path,
-            file.read(),
-            {"content-type": file.content_type}
+        file_name = secure_filename(file.filename)
+        storage_path = (
+            f"company_{prof['company_id']}/appeals/"
+            f"{gen_salt(6)}_{file_name}"
         )
 
-        file_url = sb_admin.storage.from_("appeals").get_public_url(path)
-        file_name = filename
+        try:
+            sb_admin.storage.from_("appeals-files").upload(
+                storage_path,
+                file.read(),
+                {"content-type": file.content_type},
+            )
+            file_url = (
+                f"{SUPABASE_URL}/storage/v1/object/public/"
+                f"appeals-files/{storage_path}"
+            )
+        except Exception as e:
+            flash(f"File upload failed: {e}", "danger")
+            return redirect(request.referrer)
 
+    # ---- INSERT APPEAL ----
     sb_admin.table("appeals").insert({
         "company_id": prof["company_id"],
         "sender_id": prof["id"],
-        "sender_role": "marketing_lead",
+        "sender_role": prof["role"],
+        "to_role": to_role,
         "message": message,
         "file_url": file_url,
-        "file_name": file_name
+        "file_name": file_name,
+        "status": "open"
     }).execute()
 
-    flash("✅ Appeal sent", "success")
+    flash("✅ Appeal sent successfully", "success")
     return redirect(request.referrer)
 
 @app.route("/appeal/reply/<appeal_id>", methods=["POST"])

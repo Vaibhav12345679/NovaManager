@@ -759,37 +759,81 @@ def manager_upload_task_file(task_id):
 
     flash("✅ Task file uploaded.", "success")
     return redirect(f"/role/{prof.get('role_id')}")
+# ------------------------- Appeal-----------------------------
 
-@app.route("/manager/send_appeal", methods=["POST"])
+@app.route("/appeal/send", methods=["POST"])
 @login_required
-def manager_send_appeal():
+def send_appeal():
     prof = get_profile()
-    if not prof:
-        return "Unauthorized", 403
-
-    # Only Marketing Lead (role_id = 2) allowed
-    if prof.get("role_id") != 2:
+    if not prof or prof.get("role_id") != 2:
         return "Unauthorized", 403
 
     message = request.form.get("message")
-    if not message:
-        flash("Message cannot be empty.", "danger")
-        return redirect(url_for("role_dashboard", role_id=2))
+    file = request.files.get("file")
 
-    try:
-        sb_admin.table("appeals").insert({
-            "company_id": prof["company_id"],
-            "sender_id": prof["id"],
-            "sender_name": prof["full_name"],
-            "message": message,
-            "status": "open"
-        }).execute()
-    except Exception as e:
-        flash(f"Failed to send appeal: {e}", "danger")
-        return redirect(url_for("role_dashboard", role_id=2))
+    file_url = None
+    file_name = None
 
-    flash("✅ Appeal sent to Admin / Manager", "success")
-    return redirect(url_for("role_dashboard", role_id=2))
+    if file and file.filename:
+        filename = secure_filename(file.filename)
+        unique = f"{gen_salt(8)}_{filename}"
+        path = f"appeals/{prof['company_id']}/{unique}"
+
+        sb_admin.storage.from_("appeals").upload(
+            path,
+            file.read(),
+            {"content-type": file.content_type}
+        )
+
+        file_url = sb_admin.storage.from_("appeals").get_public_url(path)
+        file_name = filename
+
+    sb_admin.table("appeals").insert({
+        "company_id": prof["company_id"],
+        "sender_id": prof["id"],
+        "sender_role": "marketing_lead",
+        "message": message,
+        "file_url": file_url,
+        "file_name": file_name
+    }).execute()
+
+    flash("✅ Appeal sent", "success")
+    return redirect(request.referrer)
+
+@app.route("/appeal/reply/<appeal_id>", methods=["POST"])
+@login_required
+def reply_appeal(appeal_id):
+    prof = get_profile()
+    if not prof or prof.get("role") != "company_admin":
+        return "Unauthorized", 403
+
+    reply_message = request.form.get("reply_message")
+    reply_file = request.files.get("reply_file")
+
+    reply_file_url = None
+
+    if reply_file and reply_file.filename:
+        filename = secure_filename(reply_file.filename)
+        unique = f"{gen_salt(8)}_{filename}"
+        path = f"appeals/replies/{unique}"
+
+        sb_admin.storage.from_("appeals").upload(
+            path,
+            reply_file.read(),
+            {"content-type": reply_file.content_type}
+        )
+
+        reply_file_url = sb_admin.storage.from_("appeals").get_public_url(path)
+
+    sb_admin.table("appeals").update({
+        "reply_message": reply_message,
+        "reply_file_url": reply_file_url,
+        "status": "replied",
+        "replied_at": "now()"
+    }).eq("id", appeal_id).execute()
+
+    flash("✅ Reply sent", "success")
+    return redirect(url_for("admin_dashboard"))
 
 
 # ---------------- Run ----------------

@@ -841,12 +841,16 @@ def reply_appeal(appeal_id):
 
         reply_file_url = sb_admin.storage.from_("appeals").get_public_url(path)
 
-    sb_admin.table("appeals").update({
-        "reply_message": reply_message,
-        "reply_file_url": reply_file_url,
-        "status": "replied",
-        "replied_at": "now()"
-    }).eq("id", appeal_id).execute()
+    sb_admin.table("appeals").insert({
+    "company_id": prof["company_id"],     # ✅ UUID
+    "sender_id": prof["id"],               # ✅ UUID (auth user id)
+    "sender_role": prof["role"],            # ✅ text (manager / marketing_lead)
+    "to_role": request.form.get("to_role"), # ✅ text (admin / manager)
+    "message": message,
+    "file_url": file_url,
+    "file_name": file_name,
+    "status": "open"
+}).execute()
 
     flash("✅ Reply sent", "success")
     return redirect(url_for("admin_dashboard"))

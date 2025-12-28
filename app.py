@@ -768,92 +768,48 @@ def send_appeal():
     if not prof:
         return "Unauthorized", 403
 
+    title = request.form.get("title")
     message = request.form.get("message")
-    to_role = request.form.get("to_role")  # admin / manager
-
-    if not message:
-        flash("Appeal message required", "danger")
-        return redirect(request.referrer)
-
     file = request.files.get("file")
-    file_url = None
+
     file_name = None
+    file_url = None
 
-    # ---- FILE UPLOAD TO SUPABASE STORAGE ----
+    # ---------- Upload file ----------
     if file and file.filename:
-        file_name = secure_filename(file.filename)
-        storage_path = (
-            f"company_{prof['company_id']}/appeals/"
-            f"{gen_salt(6)}_{file_name}"
-        )
+        ext = file.filename.rsplit(".", 1)[-1]
+        file_name = f"{gen_salt(10)}.{ext}"
 
-        try:
-            sb_admin.storage.from_("appeals-files").upload(
-                storage_path,
-                file.read(),
-                {"content-type": file.content_type},
-            )
-            file_url = (
-                f"{SUPABASE_URL}/storage/v1/object/public/"
-                f"appeals-files/{storage_path}"
-            )
-        except Exception as e:
-            flash(f"File upload failed: {e}", "danger")
-            return redirect(request.referrer)
-
-    # ---- INSERT APPEAL ----
-    sb_admin.table("appeals").insert({
-        "company_id": prof["company_id"],
-        "sender_id": prof["id"],
-        "sender_role": prof["role"],
-        "to_role": to_role,
-        "message": message,
-        "file_url": file_url,
-        "file_name": file_name,
-        "status": "open"
-    }).execute()
-
-    flash("✅ Appeal sent successfully", "success")
-    return redirect(request.referrer)
-
-@app.route("/appeal/reply/<appeal_id>", methods=["POST"])
-@login_required
-def reply_appeal(appeal_id):
-    prof = get_profile()
-    if not prof or prof.get("role") != "company_admin":
-        return "Unauthorized", 403
-
-    reply_message = request.form.get("reply_message")
-    reply_file = request.files.get("reply_file")
-
-    reply_file_url = None
-
-    if reply_file and reply_file.filename:
-        filename = secure_filename(reply_file.filename)
-        unique = f"{gen_salt(8)}_{filename}"
-        path = f"appeals/replies/{unique}"
+        file_bytes = file.read()
 
         sb_admin.storage.from_("appeals").upload(
-            path,
-            reply_file.read(),
-            {"content-type": reply_file.content_type}
+            file_name,
+            file_bytes,
+            {"content-type": file.content_type}
         )
 
-        reply_file_url = sb_admin.storage.from_("appeals").get_public_url(path)
+        file_url = (
+            f"{SUPABASE_URL}/storage/v1/object/public/appeals/{file_name}"
+        )
+#------------- marketing task ----------------
+@app.route("/marketing/create_task", methods=["POST"])
+@login_required
+def marketing_create_task():
+    prof = get_profile()
+    if not prof or prof.get("role_id") != 2:
+        return "Unauthorized", 403
 
-    sb_admin.table("appeals").insert({
-    "company_id": prof["company_id"],     # ✅ UUID
-    "sender_id": prof["id"],               # ✅ UUID (auth user id)
-    "sender_role": prof["role"],            # ✅ text (manager / marketing_lead)
-    "to_role": request.form.get("to_role"), # ✅ text (admin / manager)
-    "message": message,
-    "file_url": file_url,
-    "file_name": file_name,
-    "status": "open"
-}).execute()
+    sb_admin.table("tasks").insert({
+        "title": request.form["title"],
+        "description": request.form["description"],
+        "assigned_to": request.form["assigned_to"],
+        "company_id": prof["company_id"],
+        "status": "Pending",
+        "deadline": request.form.get("deadline")
+    }).execute()
 
-    flash("✅ Reply sent", "success")
-    return redirect(url_for("admin_dashboard"))
+    flash("Task assigned successfully", "success")
+    return redirect(url_for("role_dashboard", role_id=2))
 
 
 # ---------------- Run ----------------

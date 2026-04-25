@@ -14,18 +14,6 @@ import importlib.util
 from supabase_fake import supabase
 
 # ----------------- Load .env -----------------
-load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
-
-if not (SUPABASE_URL and SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY):
-    raise RuntimeError("❌ Fill .env with SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY")
-
-# ----------------- Clients -----------------
-sb: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-sb_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY

@@ -325,20 +325,24 @@ def login():
             flash("❌ Login failed: " + str(e), "danger")
             return redirect(url_for("login"))
 
-        # ✅ FIX STARTS HERE
-        if not res or "access_token" not in res:
+        # ✅ CORRECT CHECK
+        if not res or not res.session:
             flash("❌ Login failed. Please check your email and password.", "danger")
             return redirect(url_for("login"))
 
-        session["access_token"] = res["access_token"]
+        # ✅ CORRECT TOKEN ACCESS
+        token = res.session.access_token
 
-        # 🔥 IMPORTANT: set token for future requests
-        sb.set_token(res["access_token"])
+        session["access_token"] = token
+
+        # 🔥 VERY IMPORTANT (DON'T MISS THIS)
+        sb.set_token(token)
+        sb_admin.set_token(token)
 
         return redirect(url_for("index"))
 
     return render_template("login.html")
-
+    
 @app.route("/logout")
 def logout():
     session.clear()

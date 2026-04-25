@@ -13,6 +13,137 @@ from postgrest.exceptions import APIError
 import importlib.util
 from supabase_fake import supabase
 
+import requests
+
+API_URL = "https://api.somaedgex-cloud.online"
+
+# -------- Supabase-like compatibility layer --------
+class _Resp:
+    def __init__(self, data=None):
+        self.data = data
+
+class _Query:
+    def __init__(self, table, store):
+        self.table = table
+        self.store = store
+        self._op = None
+        self._data = None
+        self._filters = []
+
+    def select(self, *_):
+        self._op = "select"
+        return self
+
+    def insert(self, data):
+        self._op = "insert"
+        self._data = data
+        return self
+
+    def update(self, data):
+        self._op = "update"
+        self._data = data
+        return self
+
+    def delete(self):
+        self._op = "delete"
+        return self
+
+    def eq(self, key, val):
+        self._filters.append((key, val))
+        return self
+
+    def maybe_single(self):
+        self._single = True
+        return self
+
+    def execute(self):
+        table = self.store.setdefault(self.table, [])
+
+        def match(row):
+            return all(str(row.get(k)) == str(v) for k, v in self._filters)
+
+        if self._op == "insert":
+            if isinstance(self._data, list):
+                table.extend(self._data)
+                return _Resp(self._data)
+            else:
+                table.append(self._data)
+                return _Resp([self._data])
+
+        if self._op == "select":
+            res = [r for r in table if match(r)]
+            return _Resp(res)
+
+        if self._op == "update":
+            for r in table:
+                if match(r):
+                    r.update(self._data)
+            return _Resp([])
+
+        if self._op == "delete":
+            self.store[self.table] = [r for r in table if not match(r)]
+            return _Resp([])
+
+        return _Resp([])
+
+
+class _AuthAdmin:
+    def create_user(self, payload):
+        # use your backend signup
+        res = requests.post(f"{API_URL}/auth/v1/signup", json=payload)
+        data = res.json()
+        # mimic supabase return
+        class U: pass
+        u = U()
+        u.id = data.get("user", {}).get("id", "local-user")
+        return type("R", (), {"user": u})
+
+    def delete_user(self, user_id):
+        return True  # no-op
+
+
+class _Auth:
+    def __init__(self):
+        self.admin = _AuthAdmin()
+
+    def sign_in_with_password(self, creds):
+        res = requests.post(f"{API_URL}/auth/v1/token", json=creds)
+        data = res.json()
+        return data
+
+    def get_user(self, token):
+        res = requests.get(
+            f"{API_URL}/auth/v1/user",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        data = res.json()
+        class U: pass
+        u = U()
+        u.id = data.get("id", 1)
+        return type("R", (), {"user": u})
+
+
+class _Storage:
+    def from_(self, *_):
+        class S:
+            def upload(self, *args, **kwargs):
+                return True
+        return S()
+
+
+class SBAdminFake:
+    def __init__(self):
+        self.auth = _Auth()
+        self._store = {}
+        self.storage = _Storage()
+
+    def table(self, name):
+        return _Query(name, self._store)
+
+
+# 👉 this replaces your old sb_admin
+sb_admin = SBAdminFake()
+
 load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")

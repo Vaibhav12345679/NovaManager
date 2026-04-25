@@ -108,4 +108,4 @@ class SupabaseFake:
 sb = SupabaseFake()
 sb_admin = SupabaseFake()
 supabase = sb
-sb_admin = SupabaseFake()
+

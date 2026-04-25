@@ -11,7 +11,7 @@ from postgrest.exceptions import APIError
 
 # NEW: to dynamically load role dashboards from Python files
 import importlib.util
-from supabase_fake import supabase
+from supabase_fake import sb, sb_admin
 
 import requests
 

@@ -1,128 +1,24 @@
 import os
 import requests
-import importlib.util
-import chardet
-
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from functools import wraps
 from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
+from supabase_fake import sb, sb_admin
 
-# NEW: to dynamically load role dashboards from Python files
-from supabase_fake import sb
-
-sb_admin = sb
-
-API_URL = "https://api.somaedgex-cloud.online"
-
+# ----------------- CONFIG -----------------
 load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
 
-# ----------------- App -----------------
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
-# ----------------- File Upload Config -----------------
 UPLOAD_FOLDER = os.path.join("static", "task_files")
-ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "png", "jpg", "jpeg"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-# ----------------- Direct API helpers (replaces .table().eq().execute()) -----------------
-def _hdrs():
-    """Auth headers for every API call."""
-    token = session.get("access_token", "")
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
-
-
-def db_select(table, **filters):
-    """SELECT * FROM table WHERE col=val ..."""
-    params = {k: f"eq.{v}" for k, v in filters.items()}
-    try:
-        r = requests.get(f"{API_URL}/rest/v1/{table}", params=params, headers=_hdrs(), timeout=10)
-        data = r.json()
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
-def db_select_one(table, **filters):
-    """Return single row or None."""
-    results = db_select(table, **filters)
-    return results[0] if results else None
-
-
-def db_insert(table, data):
-    """INSERT INTO table returning first row."""
-    try:
-        r = requests.post(f"{API_URL}/rest/v1/{table}", json=data, headers=_hdrs(), timeout=10)
-        result = r.json()
-        return result[0] if isinstance(result, list) and result else result
-    except Exception:
-        return None
-
-
-def db_update(table, data, **filters):
-    """UPDATE table SET ... WHERE col=val."""
-    params = {k: f"eq.{v}" for k, v in filters.items()}
-    try:
-        requests.patch(f"{API_URL}/rest/v1/{table}", json=data, params=params, headers=_hdrs(), timeout=10)
-    except Exception:
-        pass
-
-
-def db_delete(table, **filters):
-    """DELETE FROM table WHERE col=val."""
-    params = {k: f"eq.{v}" for k, v in filters.items()}
-    try:
-        requests.delete(f"{API_URL}/rest/v1/{table}", params=params, headers=_hdrs(), timeout=10)
-    except Exception:
-        pass
-
-
-def signup_user(email, password):
-    """Create auth user via custom API. Returns (user_id, error_msg)."""
-    try:
-        r = requests.post(
-            f"{API_URL}/auth/v1/signup",
-            json={"email": email, "password": password, "email_confirm": True},
-            timeout=10,
-        )
-        data = r.json()
-        if "error" in data or r.status_code >= 400:
-            msg = data.get("error_description") or data.get("error") or "Signup failed"
-            return None, msg
-        user_id = (data.get("user") or {}).get("id")
-        if not user_id:
-            return None, "No user ID returned"
-        return user_id, None
-    except Exception as e:
-        return None, str(e)
-
-
-def delete_auth_user(user_id):
-    """Delete auth user via custom API (best-effort)."""
-    try:
-        requests.delete(
-            f"{API_URL}/auth/v1/admin/users/{user_id}",
-            headers=_hdrs(),
-            timeout=10,
-        )
-    except Exception:
-        pass
-
-
-# ----------------- Helpers -----------------
+# ----------------- HELPERS -----------------
 def login_required(f):
     @wraps(f)
     def wrapped(*args, **kwargs):
@@ -131,37 +27,195 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapped
 
-
 def get_current_user():
     token = session.get("access_token")
     if not token:
         return None
     try:
         resp = sb.auth.get_user(token)
-        return resp.user if resp and resp.user else None
-    except Exception:
+        return resp  # already JSON
+    except:
         return None
-
 
 def get_profile():
     user = get_current_user()
     if not user:
         return None
-    return db_select_one("profiles", id=user.id)
 
+    uid = user.get("id")
 
-# ----------------- Routes -----------------
+    try:
+        res = sb_admin.table("profiles").select().eq("id", uid).maybe_single().execute()
+        return res.data
+    except:
+        return None
+
+# ----------------- HOME -----------------
 @app.route("/")
 def index():
     prof = get_profile()
+
     if prof:
-        role = prof.get("role")
-        # Admin \u2192 admin dashboard
-        if role == "company_admin":
+        if prof.get("role") == "company_admin":
             return redirect(url_for("admin_dashboard"))
-        # If user has a role_id \u2192 go to that role dashboard (manager etc.)
+
         if prof.get("role_id"):
             return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
-        # Fallback \u2192 generic employee dashboard
+
         return redirect(url_for("employee_dashboard"))
-    # Not
+
+    return render_template("index.html")
+
+# ----------------- REGISTER -----------------
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        company_name = request.form.get("company_name")
+        admin_name = request.form.get("admin_name")
+        email = request.form.get("email")
+        password = request.form.get("password")
+
+        # 🔥 API SIGNUP
+        res = requests.post(
+            "https://api.somaedgex-cloud.online/auth/v1/signup",
+            json={"email": email, "password": password}
+        )
+
+        data = res.json()
+
+        if "error" in data:
+            flash(data["error"], "danger")
+            return redirect(url_for("register"))
+
+        user_id = data.get("user", {}).get("id") or email
+
+        # CREATE COMPANY
+        comp = sb_admin.table("companies").insert({
+            "name": company_name,
+            "admin_user_id": user_id,
+            "email": email
+        }).execute()
+
+        company_id = comp.data[0].get("id") if comp.data else email
+
+        # CREATE PROFILE
+        sb_admin.table("profiles").insert({
+            "id": user_id,
+            "full_name": admin_name,
+            "company_id": company_id,
+            "role": "company_admin"
+        }).execute()
+
+        flash("Registered successfully", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
+
+# ----------------- LOGIN -----------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+
+        res = sb.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
+
+        if not res or not res.session:
+            flash("Login failed", "danger")
+            return redirect(url_for("login"))
+
+        token = res.session.access_token
+
+        session["access_token"] = token
+
+        # IMPORTANT
+        sb.set_token(token)
+        sb_admin.set_token(token)
+
+        return redirect(url_for("index"))
+
+    return render_template("login.html")
+
+# ----------------- LOGOUT -----------------
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+# ----------------- ADMIN -----------------
+@app.route("/admin")
+@login_required
+def admin_dashboard():
+    prof = get_profile()
+    if not prof or prof.get("role") != "company_admin":
+        return "Unauthorized", 403
+
+    company_id = prof["company_id"]
+
+    users = sb_admin.table("profiles").select().eq("company_id", company_id).execute().data or []
+    tasks = sb_admin.table("tasks").select().eq("company_id", company_id).execute().data or []
+    roles = sb_admin.table("roles").select().eq("company_id", company_id).execute().data or []
+
+    return render_template("admin_dashboard.html",
+                           profile=prof,
+                           users=users,
+                           tasks=tasks,
+                           roles=roles)
+
+# ----------------- ROLE DASHBOARD -----------------
+@app.route("/role/<role_id>")
+@login_required
+def role_dashboard(role_id):
+    prof = get_profile()
+    if not prof:
+        return redirect(url_for("login"))
+
+    company_id = prof["company_id"]
+
+    users = sb_admin.table("profiles").select().eq("company_id", company_id).execute().data or []
+    tasks = sb_admin.table("tasks").select().eq("company_id", company_id).execute().data or []
+    roles = sb_admin.table("roles").select().eq("company_id", company_id).execute().data or []
+
+    return render_template("role_dashboard.html",
+                           profile=prof,
+                           users=users,
+                           tasks=tasks,
+                           roles=roles)
+
+# ----------------- CREATE TASK -----------------
+@app.route("/admin/create_task", methods=["POST"])
+@login_required
+def create_task():
+    prof = get_profile()
+
+    title = request.form.get("title")
+    description = request.form.get("description")
+
+    sb_admin.table("tasks").insert({
+        "title": title,
+        "description": description,
+        "company_id": prof["company_id"],
+        "status": "Pending"
+    }).execute()
+
+    flash("Task created", "success")
+    return redirect(url_for("admin_dashboard"))
+
+# ----------------- EMPLOYEE -----------------
+@app.route("/employee")
+@login_required
+def employee_dashboard():
+    prof = get_profile()
+
+    tasks = sb_admin.table("tasks").select().execute().data or []
+
+    return render_template("employee_dashboard.html",
+                           profile=prof,
+                           tasks=tasks)
+
+# ----------------- RUN -----------------
+if __name__ == "__main__":
+    app.run(debug=True)

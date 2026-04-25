@@ -34,7 +34,6 @@ def get_current_user():
     try:
         resp = sb.auth.get_user(token)
 
-        # ✅ FIX: extract real data
         if hasattr(resp, "user") and resp.user:
             return resp.user
 
@@ -50,7 +49,7 @@ def get_profile():
     if not user:
         return None
 
-    uuid = user["id"] if isinstance(user, dict) else getattr(user, "id", None)
+    uid = user["id"] if isinstance(user, dict) else getattr(user, "id", None)
 
     try:
         res = sb_admin.table("profiles").select().eq("id", uid).maybe_single().execute()
@@ -83,7 +82,6 @@ def register():
         email = request.form.get("email")
         password = request.form.get("password")
 
-        # 🔥 API SIGNUP
         res = requests.post(
             "https://api.somaedgex-cloud.online/auth/v1/signup",
             json={"email": email, "password": password}
@@ -97,7 +95,6 @@ def register():
 
         user_id = data.get("user", {}).get("id") or email
 
-        # CREATE COMPANY
         comp = sb_admin.table("companies").insert({
             "name": company_name,
             "admin_user_id": user_id,
@@ -106,7 +103,6 @@ def register():
 
         company_id = comp.data[0].get("id") if comp.data else email
 
-        # CREATE PROFILE
         sb_admin.table("profiles").insert({
             "id": user_id,
             "full_name": admin_name,
@@ -136,10 +132,8 @@ def login():
             return redirect(url_for("login"))
 
         token = res.session.access_token
-
         session["access_token"] = token
 
-        # IMPORTANT
         sb.set_token(token)
         sb_admin.set_token(token)
 
@@ -223,6 +217,27 @@ def employee_dashboard():
     return render_template("employee_dashboard.html",
                            profile=prof,
                            tasks=tasks)
+
+# ----------------- REPORTS (FIXED YOUR ERROR) -----------------
+@app.route("/admin/reports")
+@login_required
+def reports_page():
+    prof = get_profile()
+    if not prof or prof.get("role") != "company_admin":
+        return "Unauthorized", 403
+
+    company_id = prof["company_id"]
+
+    tasks = sb_admin.table("tasks").select().eq("company_id", company_id).execute().data or []
+
+    total = len(tasks)
+    completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
+    pending = total - completed
+
+    return render_template("reports.html",
+                           total=total,
+                           completed=completed,
+                           pending=pending)
 
 # ----------------- RUN -----------------
 if __name__ == "__main__":

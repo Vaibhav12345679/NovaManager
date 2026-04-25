@@ -33,7 +33,15 @@ def get_current_user():
         return None
     try:
         resp = sb.auth.get_user(token)
-        return resp  # already JSON
+
+        # ✅ FIX: extract real data
+        if hasattr(resp, "user") and resp.user:
+            return resp.user
+
+        if isinstance(resp, dict):
+            return resp
+
+        return None
     except:
         return None
 
@@ -42,7 +50,7 @@ def get_profile():
     if not user:
         return None
 
-    uid = user.get("id")
+    uuid = user["id"] if isinstance(user, dict) else getattr(user, "id", None)
 
     try:
         res = sb_admin.table("profiles").select().eq("id", uid).maybe_single().execute()

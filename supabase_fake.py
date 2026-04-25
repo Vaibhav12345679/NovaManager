@@ -104,5 +104,8 @@ class SupabaseFake:
         return Table(name, self.token)
 
 # instances (IMPORTANT)
+
 sb = SupabaseFake()
+sb_admin = SupabaseFake()
+supabase = sb
 sb_admin = SupabaseFake()

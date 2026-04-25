@@ -1,11 +1,25 @@
 import requests
 
-API_URL = "http://localhost:3000"
+API_URL = "https://api.somaedgex-cloud.online/"
+
+# --- helper to mimic supabase response ---
+class SessionObj:
+    def __init__(self, token):
+        self.access_token = token
+
+class ResponseObj:
+    def __init__(self, data):
+        # mimic res.session.access_token
+        token = data.get("access_token")
+        self.session = SessionObj(token) if token else None
+        self.user = data.get("user")
+        self.raw = data  # optional: keep original
 
 class Auth:
     def sign_in_with_password(self, creds):
         res = requests.post(f"{API_URL}/auth/v1/token", json=creds)
-        return res.json()
+        data = res.json()
+        return ResponseObj(data)
 
     def get_user(self, token):
         res = requests.get(
@@ -48,5 +62,4 @@ class SupabaseFake:
         return Table(name, self.token)
 
 
-# create instance
 supabase = SupabaseFake()

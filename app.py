@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from supabase import create_client, Client
 from functools import wraps
 from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
@@ -12,6 +11,7 @@ from postgrest.exceptions import APIError
 
 # NEW: to dynamically load role dashboards from Python files
 import importlib.util
+from supabase_fake import supabase
 
 # ----------------- Load .env -----------------
 load_dotenv()
@@ -192,16 +192,24 @@ def login():
             return redirect(url_for("login"))
 
         try:
-            res = sb.auth.sign_in_with_password({"email": email, "password": password})
+            res = sb.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
         except Exception as e:
             flash("❌ Login failed: " + str(e), "danger")
             return redirect(url_for("login"))
 
-        if not res or not getattr(res, "session", None):
+        # ✅ FIX STARTS HERE
+        if not res or "access_token" not in res:
             flash("❌ Login failed. Please check your email and password.", "danger")
             return redirect(url_for("login"))
 
-        session["access_token"] = res.session.access_token
+        session["access_token"] = res["access_token"]
+
+        # 🔥 IMPORTANT: set token for future requests
+        sb.set_token(res["access_token"])
+
         return redirect(url_for("index"))
 
     return render_template("login.html")

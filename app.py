@@ -148,6 +148,9 @@ load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
 # ----------------- Load .env -----------------
+session["access_token"] = res.session.access_token
+sb.set_token(res.session.access_token)
+sb_admin.set_token(res.session.access_token)  # 🔥 ADD THIS
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY

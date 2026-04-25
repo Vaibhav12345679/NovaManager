@@ -13,6 +13,9 @@ from postgrest.exceptions import APIError
 import importlib.util
 from supabase_fake import supabase
 
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
 # ----------------- Load .env -----------------
 
 app = Flask(__name__)

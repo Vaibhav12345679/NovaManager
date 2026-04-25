@@ -11,138 +11,13 @@ from postgrest.exceptions import APIError
 
 # NEW: to dynamically load role dashboards from Python files
 import importlib.util
-from supabase_fake import sb, sb_admin
+from supabase_fake import supabase as sb
 
 import requests
 
 API_URL = "https://api.somaedgex-cloud.online"
 
-# -------- Supabase-like compatibility layer --------
-class _Resp:
-    def __init__(self, data=None):
-        self.data = data
-
-class _Query:
-    def __init__(self, table, store):
-        self.table = table
-        self.store = store
-        self._op = None
-        self._data = None
-        self._filters = []
-
-    def select(self, *_):
-        self._op = "select"
-        return self
-
-    def insert(self, data):
-        self._op = "insert"
-        self._data = data
-        return self
-
-    def update(self, data):
-        self._op = "update"
-        self._data = data
-        return self
-
-    def delete(self):
-        self._op = "delete"
-        return self
-
-    def eq(self, key, val):
-        self._filters.append((key, val))
-        return self
-
-    def maybe_single(self):
-        self._single = True
-        return self
-
-    def execute(self):
-        table = self.store.setdefault(self.table, [])
-
-        def match(row):
-            return all(str(row.get(k)) == str(v) for k, v in self._filters)
-
-        if self._op == "insert":
-            if isinstance(self._data, list):
-                table.extend(self._data)
-                return _Resp(self._data)
-            else:
-                table.append(self._data)
-                return _Resp([self._data])
-
-        if self._op == "select":
-            res = [r for r in table if match(r)]
-            return _Resp(res)
-
-        if self._op == "update":
-            for r in table:
-                if match(r):
-                    r.update(self._data)
-            return _Resp([])
-
-        if self._op == "delete":
-            self.store[self.table] = [r for r in table if not match(r)]
-            return _Resp([])
-
-        return _Resp([])
-
-
-class _AuthAdmin:
-    def create_user(self, payload):
-        # use your backend signup
-        res = requests.post(f"{API_URL}/auth/v1/signup", json=payload)
-        data = res.json()
-        # mimic supabase return
-        class U: pass
-        u = U()
-        u.id = data.get("user", {}).get("id", "local-user")
-        return type("R", (), {"user": u})
-
-    def delete_user(self, user_id):
-        return True  # no-op
-
-
-class _Auth:
-    def __init__(self):
-        self.admin = _AuthAdmin()
-
-    def sign_in_with_password(self, creds):
-        res = requests.post(f"{API_URL}/auth/v1/token", json=creds)
-        data = res.json()
-        return data
-
-    def get_user(self, token):
-        res = requests.get(
-            f"{API_URL}/auth/v1/user",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        data = res.json()
-        class U: pass
-        u = U()
-        u.id = data.get("id", 1)
-        return type("R", (), {"user": u})
-
-
-class _Storage:
-    def from_(self, *_):
-        class S:
-            def upload(self, *args, **kwargs):
-                return True
-        return S()
-
-
-class SBAdminFake:
-    def __init__(self):
-        self.auth = _Auth()
-        self._store = {}
-        self.storage = _Storage()
-
-    def table(self, name):
-        return _Query(name, self._store)
-
-
-# 👉 this replaces your old sb_admin
-sb_admin = SBAdminFake()
+sb_admin = sb
 
 load_dotenv()
 
@@ -222,27 +97,30 @@ def register():
             flash("All fields are required.", "danger")
             return redirect(url_for("register"))
 
-        # 1) Create auth user using SERVICE ROLE (admin) so it's confirmed
+        # 1) Create auth user via custom API
         try:
-            created = sb_admin.auth.admin.create_user({
-                "email": email,
-                "password": password,
-                "email_confirm": True
-            })
+            resp = requests.post(
+                f"{API_URL}/auth/v1/signup",
+                json={"email": email, "password": password, "email_confirm": True},
+                timeout=10,
+            )
+            data = resp.json()
         except Exception as e:
-            msg = str(e)
+            flash("Sign up request failed: " + str(e), "danger")
+            return redirect(url_for("register"))
+
+        if "error" in data or resp.status_code >= 400:
+            msg = data.get("error_description") or data.get("error") or "Unknown error"
             if "already registered" in msg.lower() or "already exists" in msg.lower():
                 flash("An account with this email already exists. Please log in.", "warning")
                 return redirect(url_for("login"))
             flash("Sign up error: " + msg, "danger")
             return redirect(url_for("register"))
 
-        user = getattr(created, "user", None)
-        if not user:
-            flash("Signup failed (no user returned).", "danger")
+        user_id = (data.get("user") or {}).get("id")
+        if not user_id:
+            flash("Signup failed (no user ID returned).", "danger")
             return redirect(url_for("register"))
-
-        user_id = user.id
 
         # 2) Insert into companies (handle duplicate company email)
         try:
@@ -254,36 +132,17 @@ def register():
         except APIError as e:
             if e.code == "23505":
                 flash("A company with this email already exists. Please log in instead.", "warning")
-                # optional: delete user to avoid orphan
-                try:
-                    sb_admin.auth.admin.delete_user(user_id)
-                except Exception:
-                    pass
                 return redirect(url_for("login"))
             flash(f"Company creation failed: {e.message}", "danger")
-            # optional: delete user
-            try:
-                sb_admin.auth.admin.delete_user(user_id)
-            except Exception:
-                pass
             return redirect(url_for("register"))
         except Exception as e:
             flash("Company creation failed: " + str(e), "danger")
-            try:
-                sb_admin.auth.admin.delete_user(user_id)
-            except Exception:
-                pass
             return redirect(url_for("register"))
 
-        if not comp.data:
-            flash("Company creation failed.", "danger")
-            try:
-                sb_admin.auth.admin.delete_user(user_id)
-            except Exception:
-                pass
-            return redirect(url_for("register"))
-
-        company_id = comp.data[0]["id"]
+        # Safe extraction — handles list or dict response
+        comp_data = getattr(comp, "data", comp) or []
+        company = comp_data[0] if isinstance(comp_data, list) and comp_data else comp_data
+        company_id = (company.get("id") if isinstance(company, dict) else None) or "temp-id"
 
         # 3) Create admin profile
         try:
@@ -334,7 +193,6 @@ def login():
 
         # 🔥 VERY IMPORTANT (DON'T MISS THIS)
         sb.set_token(token)
-        sb_admin.set_token(token)
 
         return redirect(url_for("index"))
 
@@ -538,17 +396,26 @@ def create_employee():
     role_id = request.form.get("role_id")
     company_id = prof["company_id"]
 
-    created = sb_admin.auth.admin.create_user({
-        "email": email,
-        "password": password,
-        "email_confirm": True
-    })
-
-    if not created or not created.user:
-        flash("❌ Failed to create user.", "danger")
+    try:
+        resp = requests.post(
+            f"{API_URL}/auth/v1/signup",
+            json={"email": email, "password": password, "email_confirm": True},
+            timeout=10,
+        )
+        data = resp.json()
+    except Exception as e:
+        flash("❌ Failed to create user: " + str(e), "danger")
         return redirect(url_for("admin_dashboard"))
 
-    user_id = created.user.id
+    if "error" in data or resp.status_code >= 400:
+        msg = data.get("error_description") or data.get("error") or "Unknown error"
+        flash("❌ Failed to create user: " + msg, "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    user_id = (data.get("user") or {}).get("id")
+    if not user_id:
+        flash("❌ Failed to create user (no ID returned).", "danger")
+        return redirect(url_for("admin_dashboard"))
 
     sb_admin.table("profiles").insert({
         "id": user_id,
@@ -605,7 +472,11 @@ def admin_delete_employee(user_id):
 
     # 2) Delete auth user (optional but recommended)
     try:
-        sb_admin.auth.admin.delete_user(user_id)
+        requests.delete(
+            f"{API_URL}/auth/v1/admin/users/{user_id}",
+            headers={"Authorization": f"Bearer {session.get('access_token')}"},
+            timeout=10,
+        )
     except Exception:
         flash("Employee auth user could not be deleted, but profile was removed.", "warning")
 
@@ -811,20 +682,25 @@ def manager_create_employee():
         return redirect(f"/role/{prof.get('role_id')}")
 
     try:
-        created = sb_admin.auth.admin.create_user({
-            "email": email,
-            "password": password,
-            "email_confirm": True
-        })
+        resp = requests.post(
+            f"{API_URL}/auth/v1/signup",
+            json={"email": email, "password": password, "email_confirm": True},
+            timeout=10,
+        )
+        data = resp.json()
     except Exception as e:
         flash("❌ Manager failed to create user: " + str(e), "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
-    if not created or not created.user:
-        flash("❌ Manager failed to create user.", "danger")
+    if "error" in data or resp.status_code >= 400:
+        msg = data.get("error_description") or data.get("error") or "Unknown error"
+        flash("❌ Manager failed to create user: " + msg, "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
-    user_id = created.user.id
+    user_id = (data.get("user") or {}).get("id")
+    if not user_id:
+        flash("❌ Manager failed to create user (no ID returned).", "danger")
+        return redirect(f"/role/{prof.get('role_id')}")
 
     try:
         sb_admin.table("profiles").insert({
@@ -837,7 +713,11 @@ def manager_create_employee():
     except Exception as e:
         flash("Profile creation failed: " + str(e), "danger")
         try:
-            sb_admin.auth.admin.delete_user(user_id)
+            requests.delete(
+                f"{API_URL}/auth/v1/admin/users/{user_id}",
+                headers={"Authorization": f"Bearer {session.get('access_token')}"},
+                timeout=10,
+            )
         except Exception:
             pass
         return redirect(f"/role/{prof.get('role_id')}")
@@ -923,7 +803,7 @@ def send_appeal():
         )
 
         file_url = (
-            f"{SUPABASE_URL}/storage/v1/object/public/appeals/{file_name}"
+            f"{API_URL}/storage/v1/object/public/appeals/{file_name}"
         )
 #------------- marketing task ----------------
 @app.route("/marketing/create_task", methods=["POST"])
@@ -949,4 +829,3 @@ def marketing_create_task():
 # ---------------- Run ----------------
 if __name__ == "__main__":
     app.run(debug=True)
-

@@ -319,23 +319,46 @@ def logout():
 @login_required
 def admin_dashboard():
     print(f"[admin_dashboard] session={dict(session)}")
+
     prof = get_profile()
     print(f"[admin_dashboard] profile={prof}")
 
+    # ❌ STOP REDIRECT LOOP — SHOW ERROR INSTEAD
     if not prof:
-        flash("Profile not found. Please log in again.", "warning")
-        return redirect(url_for("login"))
+        return f"""
+        ❌ PROFILE NOT FOUND
 
+        Session: {dict(session)}
+
+        👉 Check:
+        - Is profile created in DB?
+        - Try: /debug/profile/{session.get('access_token')}
+        """, 500
+
+    # ⚠️ ROLE CHECK (DO NOT BLOCK)
     if prof.get("role") != "company_admin":
-        flash("Your profile role is not 'company_admin'. "
-              "If this is wrong, please contact support.", "warning")
-        # Still render the dashboard with what we have — do not hard-403
-        # during initial setup when role data may still be propagating.
+        print("⚠️ WARNING: Not admin role:", prof)
 
-    company_id = prof.get("company_id") or ""
-    users = _unwrap(api_get("/profiles", params={"company_id": company_id}))
-    tasks = _unwrap(api_get("/tasks",    params={"company_id": company_id}))
-    roles = _unwrap(api_get("/roles",    params={"company_id": company_id}))
+    company_id = prof.get("company_id")
+
+    # 🔥 SAFE FETCH (NO CRASH IF API NOT READY)
+    try:
+        users = _unwrap(api_get("/profiles", params={"company_id": company_id})) or []
+    except Exception as e:
+        print("USERS ERROR:", e)
+        users = []
+
+    try:
+        tasks = _unwrap(api_get("/tasks", params={"company_id": company_id})) or []
+    except Exception as e:
+        print("TASKS ERROR:", e)
+        tasks = []
+
+    try:
+        roles = _unwrap(api_get("/roles", params={"company_id": company_id})) or []
+    except Exception as e:
+        print("ROLES ERROR:", e)
+        roles = []
 
     return render_template(
         "admin_dashboard.html",

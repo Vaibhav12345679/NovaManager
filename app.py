@@ -228,7 +228,7 @@ def register():
             return redirect(url_for("register"))
 
         # FIX #4 — single signup call; backend handles companies + profiles
-        status, data = api_post("/employees", {
+        status, data = api_post("/auth/v1/signup", {
             "email":        email,
             "password":     password,
             "company_name": company_name,
@@ -539,13 +539,12 @@ def create_employee():
         flash("Name and email are required.", "danger")
         return redirect(url_for("admin_dashboard"))
 
-    status, data = api_post("/auth/v1/signup", {
-        "email":      email,
-        "password":   password,
-        "admin_name": name,
-        "company_id": company_id,
-        "role":       "employee",
-        "role_id":    role_id,
+    status, data = api_post("/employees", {
+        "full_name": request.form.get("full_name"),
+    "email": request.form.get("email"),
+    "password": request.form.get("password"),
+    "role": request.form.get("role"),
+    "company_id": prof["company_id"]
     })
 
     if status not in (200, 201):
@@ -822,13 +821,12 @@ def manager_create_employee():
         flash("Name, email and role are required.", "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
-    status, data = api_post("/auth/v1/signup", {
-        "email":      email,
-        "password":   password,
-        "admin_name": name,
-        "company_id": company_id,
-        "role":       "employee",
-        "role_id":    role_id,
+    status, data = api_post("/employees", {
+        "full_name": request.form.get("full_name"),
+    "email": request.form.get("email"),
+    "password": request.form.get("password"),
+    "role": request.form.get("role"),
+    "company_id": prof["company_id"]
     })
 
     if status not in (200, 201):

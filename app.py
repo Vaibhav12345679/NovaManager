@@ -73,7 +73,6 @@ def index():
 
     return render_template("index.html")
 
-# ----------------- REGISTER -----------------
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -82,60 +81,66 @@ def register():
         email = request.form.get("email")
         password = request.form.get("password")
 
-        res = requests.post(
-            "https://api.somaedgex-cloud.online/auth/v1/signup",
-            json={"email": email, "password": password}
-        )
+        # prevent missing fields
+        if not all([company_name, admin_name, email, password]):
+            flash("All fields are required", "danger")
+            return redirect(url_for("register"))
 
-        data = res.json()
+        try:
+            res = requests.post(
+                "https://api.somaedgex-cloud.online/auth/v1/signup",
+                json={
+                    "email": email,
+                    "password": password,
+                    "company_name": company_name,
+                    "admin_name": admin_name
+                }
+            )
+
+            data = res.json()
+        except Exception as e:
+            flash("API error: " + str(e), "danger")
+            return redirect(url_for("register"))
 
         if "error" in data:
             flash(data["error"], "danger")
             return redirect(url_for("register"))
 
-        user_id = data.get("user", {}).get("id") or email
-
-        comp = sb_admin.table("companies").insert({
-            "name": company_name,
-            "admin_user_id": user_id,
-            "email": email
-        }).execute()
-
-        company_id = comp.data[0].get("id") if comp.data else email
-
-        sb_admin.table("profiles").insert({
-            "id": user_id,
-            "full_name": admin_name,
-            "company_id": company_id,
-            "role": "company_admin"
-        }).execute()
-
         flash("Registered successfully", "success")
         return redirect(url_for("login"))
 
     return render_template("register.html")
-
-# ----------------- LOGIN -----------------
+    
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
 
-        res = sb.auth.sign_in_with_password({
-            "email": email,
-            "password": password
-        })
-
-        if not res or not res.session:
-            flash("Login failed", "danger")
+        if not (email and password):
+            flash("Email and password required", "danger")
             return redirect(url_for("login"))
 
-        token = res.session.access_token
-        session["access_token"] = token
+        try:
+            res = requests.post(
+                "https://api.somaedgex-cloud.online/auth/v1/token",
+                json={
+                    "email": email,
+                    "password": password
+                }
+            )
 
-        sb.set_token(token)
-        sb_admin.set_token(token)
+            data = res.json()
+        except Exception as e:
+            flash("API error: " + str(e), "danger")
+            return redirect(url_for("login"))
+
+        if "error" in data:
+            flash(data["error"], "danger")
+            return redirect(url_for("login"))
+
+        # store token
+        session["access_token"] = data.get("access_token")
 
         return redirect(url_for("index"))
 

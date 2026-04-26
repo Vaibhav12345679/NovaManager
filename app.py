@@ -529,47 +529,30 @@ def create_employee():
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    name       = request.form.get("name",     "").strip()
-    email      = request.form.get("email",    "").strip()
+    name       = request.form.get("name", "").strip()
+    email      = request.form.get("email", "").strip()
     password   = request.form.get("password") or gen_salt(8)
     role_id    = request.form.get("role_id")
     company_id = prof.get("company_id")
 
-    if not (name and email):
-        flash("Name and email are required.", "danger")
+    if not (name and email and role_id):
+        flash("All fields are required.", "danger")
         return redirect(url_for("admin_dashboard"))
 
     status, data = api_post("/employees", {
-        "full_name": request.form.get("full_name"),
-    "email": request.form.get("email"),
-    "password": request.form.get("password"),
-    "role": request.form.get("role"),
-    "company_id": prof["company_id"]
+        "full_name": name,
+        "email": email,
+        "password": password,
+        "role": role_id,
+        "company_id": company_id
     })
 
     if status not in (200, 201):
-        error = data.get("message") or data.get("error") or "Failed to create user."
-        flash(f"{error}", "danger")
+        flash(data.get("error", "Create failed"), "danger")
         return redirect(url_for("admin_dashboard"))
 
-    user_id = (
-        (data.get("user") or {}).get("id")
-        or data.get("id")
-        or data.get("user_id")
-    )
-
-    if user_id:
-        api_post("/profiles", {
-            "id":         user_id,
-            "full_name":  name,
-            "company_id": company_id,
-            "role":       "employee",
-            "role_id":    role_id,
-        })
-
-    flash(f"Employee created (password: {password}) — share securely.", "success")
+    flash(f"Employee created. Password: {password}", "success")
     return redirect(url_for("admin_dashboard"))
-
 
 # ─────────────────────────────────────────────
 # 10. Delete Employee (Admin)
@@ -577,41 +560,18 @@ def create_employee():
 
 @app.route("/admin/delete_employee/<user_id>", methods=["POST"])
 @login_required
-def admin_delete_employee(user_id):
+def delete_employee(user_id):
     prof = get_profile()
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    company_id = prof.get("company_id")
+    status, data = api_delete(f"/employees/{user_id}")
 
-    emp_raw = api_get(f"/profiles/{user_id}")
-    emp     = emp_raw
-    if isinstance(emp_raw, dict):
-        emp = emp_raw.get("data") or (emp_raw if emp_raw.get("id") else None)
+    if status not in (200, 204):
+        flash(data.get("error", "Delete failed"), "danger")
+    else:
+        flash("Employee deleted", "success")
 
-    if not emp or not isinstance(emp, dict):
-        flash("Employee not found.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    if str(emp.get("company_id", "")) != str(company_id):
-        flash("You cannot delete employees from another company.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    if emp.get("role") == "company_admin":
-        flash("You cannot delete a company admin.", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    status, data = api_delete(f"/profiles/{user_id}")
-    if status not in (200, 201, 204):
-        error = data.get("message") or data.get("error") or "Delete failed."
-        flash(f"{error}", "danger")
-        return redirect(url_for("admin_dashboard"))
-
-    # Best-effort cleanup — ignore failures
-    api_delete(f"/auth/v1/users/{user_id}")
-    api_put("/tasks/unassign", {"assigned_to": user_id})
-
-    flash("Employee deleted.", "success")
     return redirect(url_for("admin_dashboard"))
 
 

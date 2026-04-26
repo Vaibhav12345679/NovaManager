@@ -156,60 +156,28 @@ def login_required(f):
 
 # FIX #6 — get_current_user: token IS the user_id, zero API calls
 def get_current_user():
-    """
-    The access_token stored in session is treated as the user_id.
-    Returns a minimal user dict. No remote call needed.
-    """
     token = session.get("access_token")
     if not token:
         return None
+
     return {"id": token}
 
 
 # FIX #7 — get_profile: derive uid from session directly, no separate user call
 def get_profile():
-    """
-    Fetch the logged-in user's profile from /profiles/<user_id>.
-    user_id = session["access_token"]  (FIX #5: token IS the id).
-    """
-    uid = session.get("access_token")
-    if not uid:
-        print("[get_profile] no token in session")
+    user = get_current_user()
+    if not user:
         return None
 
-    print(f"[get_profile] fetching profile for uid={uid}")
+    uid = user["id"]
 
-    # Primary: /profiles/<uid>
-    data = api_get(f"/profiles/{uid}")
-
-    # Unwrap every common envelope pattern
-    if isinstance(data, dict):
-        if data.get("id"):
-            print(f"[get_profile] found flat dict: {data}")
-            return data
-        inner = data.get("data")
-        if isinstance(inner, dict) and inner.get("id"):
-            print(f"[get_profile] found wrapped dict: {inner}")
-            return inner
-        if isinstance(inner, list) and inner:
-            print(f"[get_profile] found wrapped list: {inner[0]}")
-            return inner[0]
-    if isinstance(data, list) and data:
-        print(f"[get_profile] found list: {data[0]}")
-        return data[0]
-
-    # Fallback: query-param style  /profiles?user_id=<uid>
-    data2   = api_get("/profiles", params={"user_id": uid})
-    result2 = _unwrap(data2)
-    if result2:
-        print(f"[get_profile] found via query-param fallback: {result2[0]}")
-        return result2[0]
-    if isinstance(data2, dict) and data2.get("id"):
-        return data2
-
-    print(f"[get_profile] profile NOT found for uid={uid}")
-    return None
-
+    try:
+        res = sb_admin.table("profiles").select("*").eq("id", uid).maybe_single().execute()
+        print("PROFILE DATA:", res.data)   # 🔥 DEBUG
+        return res.data
+    except Exception as e:
+        print("PROFILE ERROR:", e)
+        return None
 
 # ─────────────────────────────────────────────
 # 4. Routes
@@ -288,57 +256,41 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email    = request.form.get("email",    "").strip()
-        password = request.form.get("password", "")
+        email = request.form.get("email")
+        password = request.form.get("password")
 
-        if not (email and password):
-            flash("Email and password are required.", "danger")
+        if not email or not password:
+            flash("Email and password required", "danger")
             return redirect(url_for("login"))
 
         try:
-            resp = requests.post(
-                f"{API_URL}/auth/v1/token",
-                json={"email": email, "password": password},
-                timeout=10,
+            res = requests.post(
+                "https://api.somaedgex-cloud.online/auth/v1/token",
+                json={"email": email, "password": password}
             )
-            data = _safe_json(resp)
-            print(f"[login] token response status={resp.status_code} data={data}")
-        except Exception as exc:
-            print(f"[login] request exception: {exc}")
-            flash(f"Login request failed: {exc}", "danger")
+
+            data = res.json()
+            print("LOGIN RESPONSE:", data)   # 🔥 DEBUG
+        except Exception as e:
+            flash("API error: " + str(e), "danger")
             return redirect(url_for("login"))
 
-        if resp.status_code not in (200, 201):
-            error_msg = (
-                data.get("message")
-                or data.get("error_description")
-                or data.get("error")
-                or "Invalid email or password."
-            )
-            flash(f"Login failed: {error_msg}", "danger")
+        if "error" in data:
+            flash(data["error"], "danger")
             return redirect(url_for("login"))
 
-        # FIX #5 — Extract token; handle every common nesting pattern
-        token = (
-            data.get("access_token")
-            or (data.get("session") or {}).get("access_token")
-            or (data.get("data")    or {}).get("access_token")
-            or data.get("token")
-            or data.get("id")       # token may be the user_id itself
-        )
+        token = data.get("access_token")
 
         if not token:
-            print(f"[login] WARNING: no token found. Full response: {data}")
-            flash("Login failed: no access token returned.", "danger")
+            flash("Login failed (no token)", "danger")
             return redirect(url_for("login"))
 
-        # FIX #3 — clear stale state, then set session
         session.clear()
         session["access_token"] = token
-        session.permanent = True
-        print(f"[login] session set successfully. access_token={token}")
 
-        # FIX #3 — go straight to /admin
+        print("SESSION SAVED:", session)   # 🔥 DEBUG
+
+        # 🔥 FORCE DASHBOARD
         return redirect("/admin")
 
     return render_template("login.html")

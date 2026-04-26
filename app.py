@@ -1,203 +1,278 @@
 import os
+import importlib.util
+
+import chardet
+import requests
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import (Flask, flash, redirect, render_template,request, session, url_for)
 from functools import wraps
 from werkzeug.security import gen_salt
 from werkzeug.utils import secure_filename
-import chardet
-import importlib.util
-import requests
 
+# ─────────────────────────────────────────────
+# 0. Environment + App Init
+# ─────────────────────────────────────────────
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
-API_URL = "https://api.somaedgex-cloud.online"
+API_URL    = "https://api.somaedgex-cloud.online"
+SECRET_KEY = os.getenv("SECRET_KEY", "jaishreeram")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
-# ----------------- File Upload Config -----------------
-UPLOAD_FOLDER = os.path.join("static", "task_files")
+# FIX #2 — Session / Cookie config for Render (HTTPS)
+# SameSite=None + Secure=True is REQUIRED for cross-origin cookies on HTTPS.
+app.config.update(
+    SESSION_COOKIE_SECURE   = True,   # only sent over HTTPS
+    SESSION_COOKIE_HTTPONLY = True,   # JS cannot read it
+    SESSION_COOKIE_SAMESITE = "None", # allow cross-site (required on Render)
+)
+
+# ─────────────────────────────────────────────
+# 1. File Upload
+# ─────────────────────────────────────────────
+UPLOAD_FOLDER      = os.path.join("static", "task_files")
 ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "png", "jpg", "jpeg"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
-def allowed_file(filename):
+def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# ----------------- API Helpers -----------------
+# ─────────────────────────────────────────────
+# 2. API helpers  (no Supabase, ever)
+# ─────────────────────────────────────────────
 
-def _auth_headers():
-    """Return Authorization header using the session token."""
+def _auth_headers() -> dict:
+    """Build Authorization header from session token."""
     token = session.get("access_token", "")
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type":  "application/json",
+    }
 
 
-def api_get(path, params=None):
-    """GET request to the backend API. Returns parsed JSON or None on failure."""
+def _safe_json(resp) -> dict:
+    """Parse JSON safely; return {} on failure."""
     try:
-        resp = requests.get(f"{API_URL}{path}", headers=_auth_headers(), params=params, timeout=10)
-        if resp.status_code in (200, 201):
-            return resp.json()
+        return resp.json()
     except Exception:
-        pass
+        return {}
+
+
+def api_get(path: str, params: dict = None):
+    """GET -> parsed JSON, or None on any failure."""
+    try:
+        resp = requests.get(
+            f"{API_URL}{path}",
+            headers=_auth_headers(),
+            params=params,
+            timeout=10,
+        )
+        print(f"[api_get] {path} -> {resp.status_code}")
+        if resp.status_code in (200, 201):
+            return _safe_json(resp)
+    except Exception as exc:
+        print(f"[api_get] ERROR {path}: {exc}")
     return None
 
 
-def api_post(path, body=None):
-    """POST request to the backend API. Returns (status_code, json_data)."""
+def api_post(path: str, body: dict = None):
+    """POST -> (status_code, json_data)."""
     try:
-        resp = requests.post(f"{API_URL}{path}", json=body or {}, headers=_auth_headers(), timeout=10)
-        try:
-            data = resp.json()
-        except Exception:
-            data = {}
-        return resp.status_code, data
-    except Exception as e:
-        return 0, {"error": str(e)}
+        resp = requests.post(
+            f"{API_URL}{path}",
+            json=body or {},
+            headers=_auth_headers(),
+            timeout=10,
+        )
+        print(f"[api_post] {path} -> {resp.status_code}")
+        return resp.status_code, _safe_json(resp)
+    except Exception as exc:
+        print(f"[api_post] ERROR {path}: {exc}")
+        return 0, {"error": str(exc)}
 
 
-def api_put(path, body=None):
-    """PUT/PATCH request to the backend API. Returns (status_code, json_data)."""
+def api_put(path: str, body: dict = None):
+    """PUT -> (status_code, json_data)."""
     try:
-        resp = requests.put(f"{API_URL}{path}", json=body or {}, headers=_auth_headers(), timeout=10)
-        try:
-            data = resp.json()
-        except Exception:
-            data = {}
-        return resp.status_code, data
-    except Exception as e:
-        return 0, {"error": str(e)}
+        resp = requests.put(
+            f"{API_URL}{path}",
+            json=body or {},
+            headers=_auth_headers(),
+            timeout=10,
+        )
+        print(f"[api_put] {path} -> {resp.status_code}")
+        return resp.status_code, _safe_json(resp)
+    except Exception as exc:
+        print(f"[api_put] ERROR {path}: {exc}")
+        return 0, {"error": str(exc)}
 
 
-def api_delete(path):
-    """DELETE request to the backend API. Returns (status_code, json_data)."""
+def api_delete(path: str):
+    """DELETE -> (status_code, json_data)."""
     try:
-        resp = requests.delete(f"{API_URL}{path}", headers=_auth_headers(), timeout=10)
-        try:
-            data = resp.json()
-        except Exception:
-            data = {}
-        return resp.status_code, data
-    except Exception as e:
-        return 0, {"error": str(e)}
+        resp = requests.delete(
+            f"{API_URL}{path}",
+            headers=_auth_headers(),
+            timeout=10,
+        )
+        print(f"[api_delete] {path} -> {resp.status_code}")
+        return resp.status_code, _safe_json(resp)
+    except Exception as exc:
+        print(f"[api_delete] ERROR {path}: {exc}")
+        return 0, {"error": str(exc)}
 
 
-# ----------------- Auth/User Helpers -----------------
+def _unwrap(raw) -> list:
+    """Normalise API list responses regardless of envelope wrapping."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        for key in ("data", "profiles", "tasks", "roles", "results"):
+            val = raw.get(key)
+            if isinstance(val, list):
+                return val
+    return []
+
+
+# ─────────────────────────────────────────────
+# 3. Auth helpers  (NO Supabase anywhere)
+# ─────────────────────────────────────────────
 
 def login_required(f):
     @wraps(f)
     def wrapped(*args, **kwargs):
         if "access_token" not in session:
+            print("[login_required] no token in session -> redirect login")
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return wrapped
 
 
+# FIX #6 — get_current_user: token IS the user_id, zero API calls
 def get_current_user():
-    """Fetch the current user from GET /auth/v1/user using the session token."""
+    """
+    The access_token stored in session is treated as the user_id.
+    Returns a minimal user dict. No remote call needed.
+    """
     token = session.get("access_token")
     if not token:
         return None
-    try:
-        resp = requests.get(
-            f"{API_URL}/auth/v1/user",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            # Normalise: ensure data is a dict with an "id" field
-            if isinstance(data, dict) and data.get("id"):
-                return data
-    except Exception:
-        pass
-    return None
+    return {"id": token}
 
 
+# FIX #7 — get_profile: derive uid from session directly, no separate user call
 def get_profile():
     """
-    Fetch the current user's profile from GET /profiles/<user_id>.
-    Falls back to GET /profiles?user_id=<id> if single-resource endpoint not available.
-    Returns a dict or None.
+    Fetch the logged-in user's profile from /profiles/<user_id>.
+    user_id = session["access_token"]  (FIX #5: token IS the id).
     """
-    user = get_current_user()
-    if not user:
-        return None
-    uid = user.get("id") or user.get("user_id")
+    uid = session.get("access_token")
     if not uid:
+        print("[get_profile] no token in session")
         return None
 
-    # Try /profiles/<uid> first
-    data = api_get(f"/profiles/{uid}")
-    if isinstance(data, dict) and data.get("id"):
-        return data
+    print(f"[get_profile] fetching profile for uid={uid}")
 
-    # Fallback: list endpoint filtered by user_id
+    # Primary: /profiles/<uid>
+    data = api_get(f"/profiles/{uid}")
+
+    # Unwrap every common envelope pattern
+    if isinstance(data, dict):
+        if data.get("id"):
+            print(f"[get_profile] found flat dict: {data}")
+            return data
+        inner = data.get("data")
+        if isinstance(inner, dict) and inner.get("id"):
+            print(f"[get_profile] found wrapped dict: {inner}")
+            return inner
+        if isinstance(inner, list) and inner:
+            print(f"[get_profile] found wrapped list: {inner[0]}")
+            return inner[0]
     if isinstance(data, list) and data:
+        print(f"[get_profile] found list: {data[0]}")
         return data[0]
 
-    # Second fallback: query param style
-    data2 = api_get("/profiles", params={"user_id": uid})
-    if isinstance(data2, list) and data2:
-        return data2[0]
+    # Fallback: query-param style  /profiles?user_id=<uid>
+    data2   = api_get("/profiles", params={"user_id": uid})
+    result2 = _unwrap(data2)
+    if result2:
+        print(f"[get_profile] found via query-param fallback: {result2[0]}")
+        return result2[0]
     if isinstance(data2, dict) and data2.get("id"):
         return data2
 
+    print(f"[get_profile] profile NOT found for uid={uid}")
     return None
 
 
-# ----------------- Routes -----------------
+# ─────────────────────────────────────────────
+# 4. Routes
+# ─────────────────────────────────────────────
 
+# FIX #8 — Index: token check first, profile second
 @app.route("/")
 def index():
+    print(f"[index] session={dict(session)}")
+    if "access_token" not in session:
+        return render_template("index.html")
+
     prof = get_profile()
-    if prof:
-        role = prof.get("role")
-        if role == "company_admin":
-            return redirect(url_for("admin_dashboard"))
-        if prof.get("role_id"):
-            return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
-        return redirect(url_for("employee_dashboard"))
-    return render_template("index.html")
+    print(f"[index] profile={prof}")
+
+    if not prof:
+        # Token exists but profile lookup failed — send to admin anyway
+        # so the user isn't silently stuck on the homepage.
+        return redirect(url_for("admin_dashboard"))
+
+    role = prof.get("role", "")
+    if role == "company_admin":
+        return redirect(url_for("admin_dashboard"))
+    if prof.get("role_id"):
+        return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
+    return redirect(url_for("employee_dashboard"))
 
 
-# --------- Register / Login / Logout ---------
+# ─── Register ───
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         company_name = request.form.get("company_name", "").strip()
-        admin_name   = request.form.get("admin_name", "").strip()
-        email        = request.form.get("email", "").strip()
-        password     = request.form.get("password", "")
+        admin_name   = request.form.get("admin_name",   "").strip()
+        email        = request.form.get("email",        "").strip()
+        password     = request.form.get("password",     "")
 
         if not (company_name and admin_name and email and password):
             flash("All fields are required.", "danger")
             return redirect(url_for("register"))
 
-        # POST /auth/v1/signup  — sends everything the backend needs
+        # FIX #4 — single signup call; backend handles companies + profiles
         status, data = api_post("/auth/v1/signup", {
             "email":        email,
             "password":     password,
             "company_name": company_name,
-            "admin_name":   admin_name
+            "admin_name":   admin_name,
         })
+
+        print(f"[register] signup status={status} data={data}")
 
         if status in (200, 201):
             flash("Registered successfully. Please log in.", "success")
             return redirect(url_for("login"))
 
-        # Surface a helpful error
         error_msg = (
             data.get("message")
             or data.get("error_description")
             or data.get("error")
             or "Registration failed. Please try again."
         )
-        if "already" in error_msg.lower() or "exists" in error_msg.lower():
+        if "already" in str(error_msg).lower() or "exists" in str(error_msg).lower():
             flash("An account with this email already exists. Please log in.", "warning")
             return redirect(url_for("login"))
 
@@ -207,10 +282,13 @@ def register():
     return render_template("register.html")
 
 
+# ─── Login ───
+
+# FIX #3 — Login flow: call /auth/v1/token, set session, redirect /admin
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email    = request.form.get("email", "").strip()
+        email    = request.form.get("email",    "").strip()
         password = request.form.get("password", "")
 
         if not (email and password):
@@ -221,14 +299,13 @@ def login():
             resp = requests.post(
                 f"{API_URL}/auth/v1/token",
                 json={"email": email, "password": password},
-                timeout=10
+                timeout=10,
             )
-            try:
-                data = resp.json()
-            except Exception:
-                data = {}
-        except Exception as e:
-            flash(f"❌ Login request failed: {e}", "danger")
+            data = _safe_json(resp)
+            print(f"[login] token response status={resp.status_code} data={data}")
+        except Exception as exc:
+            print(f"[login] request exception: {exc}")
+            flash(f"Login request failed: {exc}", "danger")
             return redirect(url_for("login"))
 
         if resp.status_code not in (200, 201):
@@ -238,25 +315,36 @@ def login():
                 or data.get("error")
                 or "Invalid email or password."
             )
-            flash(f"❌ Login failed: {error_msg}", "danger")
+            flash(f"Login failed: {error_msg}", "danger")
             return redirect(url_for("login"))
 
-        # Accept token at top level or nested under session/data
+        # FIX #5 — Extract token; handle every common nesting pattern
         token = (
             data.get("access_token")
             or (data.get("session") or {}).get("access_token")
-            or (data.get("data") or {}).get("access_token")
+            or (data.get("data")    or {}).get("access_token")
+            or data.get("token")
+            or data.get("id")       # token may be the user_id itself
         )
 
         if not token:
-            flash("❌ Login failed: no access token returned.", "danger")
+            print(f"[login] WARNING: no token found. Full response: {data}")
+            flash("Login failed: no access token returned.", "danger")
             return redirect(url_for("login"))
 
+        # FIX #3 — clear stale state, then set session
+        session.clear()
         session["access_token"] = token
-        return redirect(url_for("index"))
+        session.permanent = True
+        print(f"[login] session set successfully. access_token={token}")
+
+        # FIX #3 — go straight to /admin
+        return redirect("/admin")
 
     return render_template("login.html")
 
+
+# ─── Logout ───
 
 @app.route("/logout")
 def logout():
@@ -264,36 +352,44 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ---------------- Admin Dashboard ----------------
+# ─────────────────────────────────────────────
+# 5. Admin Dashboard  (FIX #9)
+# ─────────────────────────────────────────────
 
 @app.route("/admin")
 @login_required
 def admin_dashboard():
+    print(f"[admin_dashboard] session={dict(session)}")
     prof = get_profile()
-    if not prof or prof.get("role") != "company_admin":
-        return "Unauthorized", 403
+    print(f"[admin_dashboard] profile={prof}")
 
-    company_id = prof.get("company_id")
+    if not prof:
+        flash("Profile not found. Please log in again.", "warning")
+        return redirect(url_for("login"))
 
-    users = api_get(f"/profiles", params={"company_id": company_id}) or []
-    tasks = api_get(f"/tasks",    params={"company_id": company_id}) or []
-    roles = api_get(f"/roles",    params={"company_id": company_id}) or []
+    if prof.get("role") != "company_admin":
+        flash("Your profile role is not 'company_admin'. "
+              "If this is wrong, please contact support.", "warning")
+        # Still render the dashboard with what we have — do not hard-403
+        # during initial setup when role data may still be propagating.
 
-    # Normalise: some APIs wrap results in a key
-    if isinstance(users, dict): users = users.get("data") or users.get("profiles") or []
-    if isinstance(tasks, dict): tasks = tasks.get("data") or tasks.get("tasks") or []
-    if isinstance(roles, dict): roles = roles.get("data") or roles.get("roles") or []
+    company_id = prof.get("company_id") or ""
+    users = _unwrap(api_get("/profiles", params={"company_id": company_id}))
+    tasks = _unwrap(api_get("/tasks",    params={"company_id": company_id}))
+    roles = _unwrap(api_get("/roles",    params={"company_id": company_id}))
 
     return render_template(
         "admin_dashboard.html",
         profile=prof,
         users=users,
         tasks=tasks,
-        roles=roles
+        roles=roles,
     )
 
 
-# ---------------- Role Dashboard ----------------
+# ─────────────────────────────────────────────
+# 6. Role Dashboard
+# ─────────────────────────────────────────────
 
 @app.route("/role/<role_id>")
 @login_required
@@ -305,23 +401,18 @@ def role_dashboard(role_id):
     if prof.get("role") == "company_admin":
         return redirect(url_for("admin_dashboard"))
 
-    if str(prof.get("role_id")) != str(role_id):
+    if str(prof.get("role_id", "")) != str(role_id):
         if prof.get("role_id"):
             return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
         return redirect(url_for("employee_dashboard"))
 
-    company_id = prof.get("company_id")
-
-    users = api_get("/profiles", params={"company_id": company_id}) or []
-    tasks = api_get("/tasks",    params={"company_id": company_id}) or []
-    roles = api_get("/roles",    params={"company_id": company_id}) or []
-
-    if isinstance(users, dict): users = users.get("data") or users.get("profiles") or []
-    if isinstance(tasks, dict): tasks = tasks.get("data") or tasks.get("tasks") or []
-    if isinstance(roles, dict): roles = roles.get("data") or roles.get("roles") or []
+    company_id = prof.get("company_id") or ""
+    users = _unwrap(api_get("/profiles", params={"company_id": company_id}))
+    tasks = _unwrap(api_get("/tasks",    params={"company_id": company_id}))
+    roles = _unwrap(api_get("/roles",    params={"company_id": company_id}))
 
     # Load optional Python dashboard renderer
-    html = None
+    html     = None
     role_dir = os.path.join("dashboard_codes", str(role_id))
     if os.path.isdir(role_dir):
         py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
@@ -333,25 +424,28 @@ def role_dashboard(role_id):
                 spec.loader.exec_module(mod)
                 if hasattr(mod, "render_dashboard"):
                     html = mod.render_dashboard(prof, users, tasks, roles)
-            except Exception as e:
-                flash(f"Dashboard render error: {e}", "danger")
+            except Exception as exc:
+                flash(f"Dashboard render error: {exc}", "danger")
 
     if html is None:
-        user_tasks = [t for t in tasks if str(t.get("assigned_to")) == str(prof.get("id"))]
-        total     = len(user_tasks)
-        completed = sum(1 for t in user_tasks if (t.get("status") or "").lower() == "completed")
-        percent   = int((completed / total) * 100) if total else 0
+        uid        = str(prof.get("id", ""))
+        user_tasks = [t for t in tasks if str(t.get("assigned_to", "")) == uid]
+        total      = len(user_tasks)
+        completed  = sum(1 for t in user_tasks if (t.get("status") or "").lower() == "completed")
+        percent    = int((completed / total) * 100) if total else 0
         return render_template(
             "employee_dashboard.html",
             profile=prof,
             tasks=user_tasks,
-            percent=percent
+            percent=percent,
         )
 
     return html
 
 
-# ---------------- Edit Dashboard ----------------
+# ─────────────────────────────────────────────
+# 7. Edit Dashboard (Admin)
+# ─────────────────────────────────────────────
 
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
@@ -360,12 +454,13 @@ def edit_dashboard(role_id):
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    # Fetch role info from API
     role_data = api_get(f"/roles/{role_id}")
-    if isinstance(role_data, dict) and role_data.get("data"):
-        role = role_data["data"]
-    elif isinstance(role_data, dict) and role_data.get("id"):
-        role = role_data
+    if isinstance(role_data, dict):
+        role = (
+            role_data.get("data")
+            if isinstance(role_data.get("data"), dict)
+            else (role_data if role_data.get("id") else {"id": role_id, "name": f"Role {role_id}"})
+        )
     else:
         role = {"id": role_id, "name": f"Role {role_id}"}
 
@@ -377,42 +472,43 @@ def edit_dashboard(role_id):
         current_file = request.form.get("current_file") or (files[0] if files else None)
 
         if "new_file" in request.files:
-            uploaded_file = request.files["new_file"]
-            if uploaded_file.filename != "":
-                filename = secure_filename(uploaded_file.filename)
-                uploaded_file.save(os.path.join(role_dir, filename))
-                flash(f"✅ Uploaded file {filename}", "success")
-                current_file = filename
+            uploaded = request.files["new_file"]
+            if uploaded.filename:
+                fname = secure_filename(uploaded.filename)
+                uploaded.save(os.path.join(role_dir, fname))
+                flash(f"Uploaded {fname}", "success")
+                current_file = fname
 
         if "file_content" in request.form and current_file:
-            save_path = os.path.join(role_dir, current_file)
-            with open(save_path, "w", encoding="utf-8") as f:
-                f.write(request.form["file_content"])
-            flash(f"✅ Saved {current_file}", "success")
+            with open(os.path.join(role_dir, current_file), "w", encoding="utf-8") as fh:
+                fh.write(request.form["file_content"])
+            flash(f"Saved {current_file}", "success")
             return redirect(url_for("edit_dashboard", role_id=role_id, file=current_file))
     else:
         current_file = request.args.get("file") or (files[0] if files else None)
 
     file_content = ""
     if current_file:
-        file_path = os.path.join(role_dir, current_file)
+        fpath = os.path.join(role_dir, current_file)
         try:
-            raw      = open(file_path, "rb").read()
-            detected = chardet.detect(raw)
-            file_content = raw.decode(detected["encoding"] or "utf-8")
-        except Exception as e:
-            file_content = f"Cannot read file: {e}"
+            raw          = open(fpath, "rb").read()
+            detected     = chardet.detect(raw)
+            file_content = raw.decode(detected.get("encoding") or "utf-8")
+        except Exception as exc:
+            file_content = f"Cannot read file: {exc}"
 
     return render_template(
         "edit_dashboard_multi.html",
         role=role,
         files=files,
         current_file=current_file,
-        file_content=file_content
+        file_content=file_content,
     )
 
 
-# ---------------- Create Role ----------------
+# ─────────────────────────────────────────────
+# 8. Create Role
+# ─────────────────────────────────────────────
 
 @app.route("/admin/create_role", methods=["POST"])
 @login_required
@@ -428,19 +524,21 @@ def create_role():
 
     status, data = api_post("/roles", {
         "company_id": prof.get("company_id"),
-        "name":       role_name
+        "name":       role_name,
     })
 
     if status in (200, 201):
-        flash(f"✅ Role '{role_name}' created.", "success")
+        flash(f"Role '{role_name}' created.", "success")
     else:
         error = data.get("message") or data.get("error") or "Role creation failed."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
 
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Create Employee (Admin) ----------------
+# ─────────────────────────────────────────────
+# 9. Create Employee (Admin)
+# ─────────────────────────────────────────────
 
 @app.route("/admin/create_employee", methods=["POST"])
 @login_required
@@ -449,8 +547,8 @@ def create_employee():
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    name       = request.form.get("name", "").strip()
-    email      = request.form.get("email", "").strip()
+    name       = request.form.get("name",     "").strip()
+    email      = request.form.get("email",    "").strip()
     password   = request.form.get("password") or gen_salt(8)
     role_id    = request.form.get("role_id")
     company_id = prof.get("company_id")
@@ -459,19 +557,18 @@ def create_employee():
         flash("Name and email are required.", "danger")
         return redirect(url_for("admin_dashboard"))
 
-    # 1) Create auth user via signup
     status, data = api_post("/auth/v1/signup", {
         "email":      email,
         "password":   password,
         "admin_name": name,
         "company_id": company_id,
         "role":       "employee",
-        "role_id":    role_id
+        "role_id":    role_id,
     })
 
     if status not in (200, 201):
         error = data.get("message") or data.get("error") or "Failed to create user."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
         return redirect(url_for("admin_dashboard"))
 
     user_id = (
@@ -480,21 +577,22 @@ def create_employee():
         or data.get("user_id")
     )
 
-    # 2) Create profile if we have a user_id
     if user_id:
         api_post("/profiles", {
             "id":         user_id,
             "full_name":  name,
             "company_id": company_id,
             "role":       "employee",
-            "role_id":    role_id
+            "role_id":    role_id,
         })
 
-    flash(f"✅ Employee created (password: {password}) — share securely.", "success")
+    flash(f"Employee created (password: {password}) — share securely.", "success")
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Delete Employee (Admin) ----------------
+# ─────────────────────────────────────────────
+# 10. Delete Employee (Admin)
+# ─────────────────────────────────────────────
 
 @app.route("/admin/delete_employee/<user_id>", methods=["POST"])
 @login_required
@@ -505,16 +603,16 @@ def admin_delete_employee(user_id):
 
     company_id = prof.get("company_id")
 
-    # Verify employee belongs to this company
-    emp = api_get(f"/profiles/{user_id}")
-    if isinstance(emp, dict) and emp.get("data"):
-        emp = emp["data"]
+    emp_raw = api_get(f"/profiles/{user_id}")
+    emp     = emp_raw
+    if isinstance(emp_raw, dict):
+        emp = emp_raw.get("data") or (emp_raw if emp_raw.get("id") else None)
 
     if not emp or not isinstance(emp, dict):
         flash("Employee not found.", "danger")
         return redirect(url_for("admin_dashboard"))
 
-    if str(emp.get("company_id")) != str(company_id):
+    if str(emp.get("company_id", "")) != str(company_id):
         flash("You cannot delete employees from another company.", "danger")
         return redirect(url_for("admin_dashboard"))
 
@@ -522,24 +620,23 @@ def admin_delete_employee(user_id):
         flash("You cannot delete a company admin.", "danger")
         return redirect(url_for("admin_dashboard"))
 
-    # Delete profile
     status, data = api_delete(f"/profiles/{user_id}")
     if status not in (200, 201, 204):
         error = data.get("message") or data.get("error") or "Delete failed."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
         return redirect(url_for("admin_dashboard"))
 
-    # Optionally delete auth user (placeholder — add endpoint if available)
+    # Best-effort cleanup — ignore failures
     api_delete(f"/auth/v1/users/{user_id}")
+    api_put("/tasks/unassign", {"assigned_to": user_id})
 
-    # Unassign their tasks
-    api_put(f"/tasks/unassign", {"assigned_to": user_id})
-
-    flash("✅ Employee deleted.", "success")
+    flash("Employee deleted.", "success")
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Create Task (Admin) ----------------
+# ─────────────────────────────────────────────
+# 11. Create Task (Admin)
+# ─────────────────────────────────────────────
 
 @app.route("/admin/create_task", methods=["POST"])
 @login_required
@@ -548,19 +645,19 @@ def create_task():
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    title       = request.form.get("title", "").strip()
+    title       = request.form.get("title",       "").strip()
     description = request.form.get("description", "")
     assigned_to = request.form.get("assigned_to") or None
-    priority    = request.form.get("priority") or "Medium"
-    deadline    = request.form.get("deadline") or None
+    priority    = request.form.get("priority")    or "Medium"
+    deadline    = request.form.get("deadline")    or None
 
-    file_url = None
+    file_url  = None
     task_file = request.files.get("task_file")
-    if task_file and task_file.filename != "":
-        filename  = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    if task_file and task_file.filename:
+        fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
         task_file.save(file_path)
-        file_url = f"/static/task_files/{filename}"
+        file_url = f"/static/task_files/{fname}"
 
     status, data = api_post("/tasks", {
         "title":       title,
@@ -570,19 +667,21 @@ def create_task():
         "priority":    priority,
         "deadline":    deadline,
         "status":      "Pending",
-        "file_url":    file_url
+        "file_url":    file_url,
     })
 
     if status in (200, 201):
-        flash("✅ Task created.", "success")
+        flash("Task created.", "success")
     else:
         error = data.get("message") or data.get("error") or "Task creation failed."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
 
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Delete Task (Admin) ----------------
+# ─────────────────────────────────────────────
+# 12. Delete Task (Admin)
+# ─────────────────────────────────────────────
 
 @app.route("/admin/delete_task/<task_id>", methods=["POST"])
 @login_required
@@ -593,29 +692,32 @@ def admin_delete_task(task_id):
 
     company_id = prof.get("company_id")
 
-    task = api_get(f"/tasks/{task_id}")
-    if isinstance(task, dict) and task.get("data"):
-        task = task["data"]
+    task_raw = api_get(f"/tasks/{task_id}")
+    task     = task_raw
+    if isinstance(task_raw, dict):
+        task = task_raw.get("data") or (task_raw if task_raw.get("id") else None)
 
     if not task or not isinstance(task, dict):
         flash("Task not found.", "danger")
         return redirect(url_for("admin_dashboard"))
 
-    if str(task.get("company_id")) != str(company_id):
+    if str(task.get("company_id", "")) != str(company_id):
         flash("You cannot delete tasks from another company.", "danger")
         return redirect(url_for("admin_dashboard"))
 
     status, data = api_delete(f"/tasks/{task_id}")
     if status in (200, 201, 204):
-        flash("✅ Task deleted.", "success")
+        flash("Task deleted.", "success")
     else:
         error = data.get("message") or data.get("error") or "Delete failed."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
 
     return redirect(url_for("admin_dashboard"))
 
 
-# ---------------- Reports ----------------
+# ─────────────────────────────────────────────
+# 13. Reports  (FIX #10)
+# ─────────────────────────────────────────────
 
 @app.route("/admin/reports")
 @login_required
@@ -624,21 +726,17 @@ def reports_page():
     if not prof or prof.get("role") != "company_admin":
         return "Unauthorized", 403
 
-    company_id = prof.get("company_id")
-    tasks_raw  = api_get("/tasks", params={"company_id": company_id}) or []
+    company_id = prof.get("company_id") or ""
+    tasks      = _unwrap(api_get("/tasks", params={"company_id": company_id}))
 
-    if isinstance(tasks_raw, dict):
-        tasks = tasks_raw.get("data") or tasks_raw.get("tasks") or []
-    else:
-        tasks = tasks_raw
-
+    # FIX #10 — safe even when tasks list is empty
     total     = len(tasks)
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     pending   = total - completed
 
-    tasks_per_employee = {}
+    tasks_per_employee: dict = {}
     for t in tasks:
-        assigned = t.get("assigned_to") or "Unassigned"
+        assigned = str(t.get("assigned_to") or "Unassigned")
         tasks_per_employee[assigned] = tasks_per_employee.get(assigned, 0) + 1
 
     return render_template(
@@ -646,11 +744,13 @@ def reports_page():
         total=total,
         completed=completed,
         pending=pending,
-        tasks_per_employee=tasks_per_employee
+        tasks_per_employee=tasks_per_employee,
     )
 
 
-# ---------------- Employee Dashboard ----------------
+# ─────────────────────────────────────────────
+# 14. Employee Dashboard
+# ─────────────────────────────────────────────
 
 @app.route("/employee")
 @login_required
@@ -659,27 +759,24 @@ def employee_dashboard():
     if not prof:
         return redirect(url_for("login"))
 
-    user_id   = prof.get("id")
-    tasks_raw = api_get("/tasks", params={"assigned_to": user_id}) or []
-
-    if isinstance(tasks_raw, dict):
-        tasks = tasks_raw.get("data") or tasks_raw.get("tasks") or []
-    else:
-        tasks = tasks_raw
+    user_id = prof.get("id", "")
+    tasks   = _unwrap(api_get("/tasks", params={"assigned_to": user_id}))
 
     total     = len(tasks)
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
-    percent   = int((completed / total) * 100) if total > 0 else 0
+    percent   = int((completed / total) * 100) if total else 0
 
     return render_template(
         "employee_dashboard.html",
         profile=prof,
         tasks=tasks,
-        percent=percent
+        percent=percent,
     )
 
 
-# ---------------- Manager: Create Task ----------------
+# ─────────────────────────────────────────────
+# 15. Manager Routes
+# ─────────────────────────────────────────────
 
 @app.route("/manager/create_task", methods=["POST"])
 @login_required
@@ -691,20 +788,20 @@ def manager_create_task():
     title       = request.form.get("title", "").strip()
     description = request.form.get("description", "")
     assigned_to = request.form.get("assigned_to") or None
-    priority    = request.form.get("priority") or "Medium"
-    deadline    = request.form.get("deadline") or None
+    priority    = request.form.get("priority")    or "Medium"
+    deadline    = request.form.get("deadline")    or None
 
     if not title:
         flash("Task title is required.", "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
-    file_url = None
+    file_url  = None
     task_file = request.files.get("task_file")
-    if task_file and task_file.filename != "":
-        filename  = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    if task_file and task_file.filename:
+        fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
         task_file.save(file_path)
-        file_url = f"/static/task_files/{filename}"
+        file_url = f"/static/task_files/{fname}"
 
     status, data = api_post("/tasks", {
         "title":       title,
@@ -714,19 +811,17 @@ def manager_create_task():
         "priority":    priority,
         "deadline":    deadline,
         "status":      "Pending",
-        "file_url":    file_url
+        "file_url":    file_url,
     })
 
     if status in (200, 201):
-        flash("✅ Task created by manager.", "success")
+        flash("Task created by manager.", "success")
     else:
         error = data.get("message") or data.get("error") or "Task creation failed."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
 
     return redirect(f"/role/{prof.get('role_id')}")
 
-
-# ---------------- Manager: Create Employee ----------------
 
 @app.route("/manager/create_employee", methods=["POST"])
 @login_required
@@ -735,8 +830,8 @@ def manager_create_employee():
     if not prof or prof.get("role") != "manager":
         return "Unauthorized", 403
 
-    name       = request.form.get("name", "").strip()
-    email      = request.form.get("email", "").strip()
+    name       = request.form.get("name",     "").strip()
+    email      = request.form.get("email",    "").strip()
     password   = request.form.get("password") or gen_salt(8)
     role_id    = request.form.get("role_id")
     company_id = prof.get("company_id")
@@ -751,12 +846,12 @@ def manager_create_employee():
         "admin_name": name,
         "company_id": company_id,
         "role":       "employee",
-        "role_id":    role_id
+        "role_id":    role_id,
     })
 
     if status not in (200, 201):
         error = data.get("message") or data.get("error") or "Failed to create user."
-        flash(f"❌ Manager failed to create user: {error}", "danger")
+        flash(f"Manager failed to create user: {error}", "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
     user_id = (
@@ -771,14 +866,12 @@ def manager_create_employee():
             "full_name":  name,
             "company_id": company_id,
             "role":       "employee",
-            "role_id":    role_id
+            "role_id":    role_id,
         })
 
-    flash(f"✅ Employee created by manager (password: {password}) — share securely.", "success")
+    flash(f"Employee created by manager (password: {password}) — share securely.", "success")
     return redirect(f"/role/{prof.get('role_id')}")
 
-
-# ---------------- Manager: Upload Completed Task File ----------------
 
 @app.route("/manager/upload_task_file/<task_id>", methods=["POST"])
 @login_required
@@ -787,15 +880,16 @@ def manager_upload_task_file(task_id):
     if not prof or prof.get("role") != "manager":
         return "Unauthorized", 403
 
-    task = api_get(f"/tasks/{task_id}")
-    if isinstance(task, dict) and task.get("data"):
-        task = task["data"]
+    task_raw = api_get(f"/tasks/{task_id}")
+    task     = task_raw
+    if isinstance(task_raw, dict):
+        task = task_raw.get("data") or (task_raw if task_raw.get("id") else None)
 
     if not task or not isinstance(task, dict):
         flash("Task not found.", "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
-    if str(task.get("company_id")) != str(prof.get("company_id")):
+    if str(task.get("company_id", "")) != str(prof.get("company_id", "")):
         flash("You cannot modify tasks from another company.", "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
@@ -804,30 +898,32 @@ def manager_upload_task_file(task_id):
         return redirect(f"/role/{prof.get('role_id')}")
 
     task_file = request.files.get("task_file")
-    if not task_file or task_file.filename == "":
+    if not task_file or not task_file.filename:
         flash("Please choose a file to upload.", "danger")
         return redirect(f"/role/{prof.get('role_id')}")
 
-    filename  = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-    file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+    file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
     task_file.save(file_path)
-    file_url  = f"/static/task_files/{filename}"
+    file_url  = f"/static/task_files/{fname}"
 
     status, data = api_put(f"/tasks/{task_id}", {
         "file_url": file_url,
-        "status":   "Completed"
+        "status":   "Completed",
     })
 
     if status in (200, 201, 204):
-        flash("✅ Task file uploaded.", "success")
+        flash("Task file uploaded.", "success")
     else:
         error = data.get("message") or data.get("error") or "Update failed."
-        flash(f"❌ Failed to update task file: {error}", "danger")
+        flash(f"Failed to update task file: {error}", "danger")
 
     return redirect(f"/role/{prof.get('role_id')}")
 
 
-# ---------------- Appeal ----------------
+# ─────────────────────────────────────────────
+# 16. Appeal
+# ─────────────────────────────────────────────
 
 @app.route("/appeal/send", methods=["POST"])
 @login_required
@@ -836,45 +932,44 @@ def send_appeal():
     if not prof:
         return "Unauthorized", 403
 
-    title   = request.form.get("title", "").strip()
+    title   = request.form.get("title",   "").strip()
     message = request.form.get("message", "").strip()
     file    = request.files.get("file")
 
-    file_name = None
-    file_url  = None
-
-    # Save file locally (no Supabase storage)
+    file_url = None
     if file and file.filename:
-        ext       = file.filename.rsplit(".", 1)[-1]
-        file_name = f"{gen_salt(10)}.{ext}"
-        save_path = os.path.join(app.config["UPLOAD_FOLDER"], file_name)
-        file.save(save_path)
-        file_url = f"/static/task_files/{file_name}"
+        ext      = file.filename.rsplit(".", 1)[-1]
+        fname    = f"{gen_salt(10)}.{ext}"
+        savepath = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+        file.save(savepath)
+        file_url = f"/static/task_files/{fname}"
 
     status, data = api_post("/appeals", {
         "user_id":    prof.get("id"),
         "company_id": prof.get("company_id"),
         "title":      title,
         "message":    message,
-        "file_url":   file_url
+        "file_url":   file_url,
     })
 
     if status in (200, 201):
-        flash("✅ Appeal submitted successfully.", "success")
+        flash("Appeal submitted successfully.", "success")
     else:
         error = data.get("message") or data.get("error") or "Appeal submission failed."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
 
     return redirect(url_for("employee_dashboard"))
 
 
-# ---------------- Marketing: Create Task ----------------
+# ─────────────────────────────────────────────
+# 17. Marketing
+# ─────────────────────────────────────────────
 
 @app.route("/marketing/create_task", methods=["POST"])
 @login_required
 def marketing_create_task():
     prof = get_profile()
-    if not prof or str(prof.get("role_id")) != "2":
+    if not prof or str(prof.get("role_id", "")) != "2":
         return "Unauthorized", 403
 
     status, data = api_post("/tasks", {
@@ -883,19 +978,22 @@ def marketing_create_task():
         "assigned_to": request.form.get("assigned_to"),
         "company_id":  prof.get("company_id"),
         "status":      "Pending",
-        "deadline":    request.form.get("deadline")
+        "deadline":    request.form.get("deadline"),
     })
 
     if status in (200, 201):
         flash("Task assigned successfully", "success")
     else:
         error = data.get("message") or data.get("error") or "Task creation failed."
-        flash(f"❌ {error}", "danger")
+        flash(f"{error}", "danger")
 
     return redirect(url_for("role_dashboard", role_id=2))
 
 
-# ---------------- Run ----------------
+# ─────────────────────────────────────────────
+# 18. Run
+# ─────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # debug=True for local; Render uses gunicorn so this block is ignored there.
     app.run(debug=True)

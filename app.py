@@ -336,7 +336,7 @@ def admin_dashboard():
         """, 500
 
     # ⚠️ ROLE CHECK (DO NOT BLOCK)
-    if prof.get("role") != "company_admin":
+    if prof.get("role") not in ["company_admin", "manager"]:
         print("⚠️ WARNING: Not admin role:", prof)
 
     company_id = prof.get("company_id")

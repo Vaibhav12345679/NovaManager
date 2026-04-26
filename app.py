@@ -164,17 +164,24 @@ def get_current_user():
 
 
 # FIX #7 — get_profile: derive uid from session directly, no separate user call
+import requests
+
 def get_profile():
-    user = get_current_user()
-    if not user:
+    token = session.get("access_token")
+
+    if not token:
         return None
 
-    uid = user["id"]
-
     try:
-        res = sb_admin.table("profiles").select("*").eq("id", uid).maybe_single().execute()
-        print("PROFILE DATA:", res.data)   # 🔥 DEBUG
-        return res.data
+        # 🔥 call your Node API debug endpoint
+        res = requests.get(f"https://api.somaedgex-cloud.online/debug/profile/{token}")
+
+        data = res.json()
+
+        print("PROFILE API:", data)
+
+        return data.get("profile")
+
     except Exception as e:
         print("PROFILE ERROR:", e)
         return None

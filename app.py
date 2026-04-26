@@ -228,7 +228,7 @@ def register():
             return redirect(url_for("register"))
 
         # FIX #4 — single signup call; backend handles companies + profiles
-        status, data = api_post("/auth/v1/signup", {
+        status, data = api_post("/employees", {
             "email":        email,
             "password":     password,
             "company_name": company_name,

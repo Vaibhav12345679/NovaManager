@@ -493,7 +493,7 @@
             <label for="task_assigned_to">Assign To</label>
             <select id="task_assigned_to" name="assigned_to">
               <option value="">Unassigned</option>
-              {% for u in users %}
+              {% for u in employees %}
                 <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
               {% endfor %}
             </select>

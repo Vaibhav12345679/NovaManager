@@ -339,6 +339,13 @@ def admin_dashboard():
         users = []
 
     try:
+     employees = _unwrap(api_get("/employees", params={"company_id": company_id}))
+     print("EMPLOYEES:", employees)
+    except Exception as e:
+     print("EMPLOYEE FETCH ERROR:", e)
+     employees = []
+
+    try:
         tasks = _unwrap(api_get("/tasks", params={"company_id": company_id}))
         print(f"[admin_dashboard] tasks fetched: {len(tasks)}")
     except Exception as e:

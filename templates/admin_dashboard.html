@@ -294,7 +294,7 @@
                   <td>{{ u.role_id or "-" }}</td>
                   <td>
                     <form method="post"
-                          action="{{ url_for('admin_delete_employee', user_id=u.id) }}"
+                          action="{{ url_for('delete_employee', user_id=u.id) }}"
                           onsubmit="return confirm('Delete this employee?');">
                       <button type="submit" class="nm-btn-danger">Delete</button>
                     </form>

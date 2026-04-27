@@ -616,55 +616,6 @@ def delete_employee(user_id):
 # 11. Create Task (Admin + Manager)
 # ─────────────────────────────────────────────
 
-@app.route("/admin/create_task", methods=["POST"])
-@login_required
-def create_task():
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[create_task] role={role}")  # ✅ FIX #7
-
-    # ✅ FIX #1
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
-
-    title       = request.form.get("title",       "").strip()
-    description = request.form.get("description", "")
-    # ✅ FIX #3 — assigned_to must come from employee dropdown
-    assigned_to = request.form.get("assigned_to") or None
-    priority    = request.form.get("priority")    or "Medium"
-    deadline    = request.form.get("deadline")    or None
-
-    print(f"[create_task] title={title} assigned_to={assigned_to} priority={priority}")  # ✅ FIX #7
-
-    file_url  = None
-    task_file = request.files.get("task_file")
-    if task_file and task_file.filename:
-        fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-        file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-        task_file.save(file_path)
-        file_url = f"/static/task_files/{fname}"
-
-    # ✅ FIX #4 — always save company_id, assigned_to, status
-    status, data = api_post("/tasks", {
-        "title":       title,
-        "description": description,
-        "company_id":  prof.get("company_id"),
-        "assigned_to": assigned_to,
-        "priority":    priority,
-        "deadline":    deadline,
-        "status":      "Pending",
-        "file_url":    file_url,
-    })
-
-    print(f"[create_task] api response status={status} data={data}")  # ✅ FIX #7
-
-    if status in (200, 201):
-        flash("Task created.", "success")
-    else:
-        error = data.get("message") or data.get("error") or "Task creation failed."
-        flash(f"{error}", "danger")
-
-    return redirect(url_for("admin_dashboard"))
 
 
 # ─────────────────────────────────────────────

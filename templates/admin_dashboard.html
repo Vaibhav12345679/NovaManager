@@ -285,8 +285,8 @@
           </tr>
           </thead>
           <tbody>
-          {% if users %}
-            {% for u in users %}
+          {% if employees %}
+            {% for u in employees %}
               {% if u.id != profile.id %}
                 <tr>
                   <td>{{ u.full_name or "Unnamed" }}</td>

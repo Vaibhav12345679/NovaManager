@@ -366,55 +366,133 @@
 
       <hr class="nm-divider">
 
-      <!-- Tasks list + delete -->
-      <div>
-        <div class="nm-section-title">Company Tasks</div>
-        <div class="nm-table-wrap nm-scroll-y" style="max-height: 200px;">
-          <table class="nm-table">
-            <thead>
+      <!-- ================= TASKS (NEW CLEAN BLOCK) ================= -->
+
+<!-- Create Task -->
+<div>
+  <div class="nm-section-title">Create Task</div>
+
+  <form method="post"
+        action="{{ url_for('create_task') }}"
+        enctype="multipart/form-data"
+        class="nm-form-grid">
+
+    <div class="nm-field">
+      <label>Title</label>
+      <input name="title" required placeholder="Eg. Prepare report">
+    </div>
+
+    <div class="nm-field">
+      <label>Description</label>
+      <textarea name="description" placeholder="Task details"></textarea>
+    </div>
+
+    <div class="nm-field">
+      <label>Assign To</label>
+      <select name="assigned_to">
+        <option value="">Unassigned</option>
+
+        {% for u in employees %}
+          <option value="{{ u.id }}">
+            {{ u.full_name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="nm-field">
+      <label>Priority</label>
+      <select name="priority">
+        <option>Low</option>
+        <option selected>Medium</option>
+        <option>High</option>
+      </select>
+    </div>
+
+    <div class="nm-field">
+      <label>Deadline</label>
+      <input type="date" name="deadline">
+    </div>
+
+    <div class="nm-field">
+      <label>Upload File</label>
+      <input type="file" name="task_file">
+    </div>
+
+    <div class="nm-form-actions">
+      <button class="nm-btn-primary">Create Task</button>
+    </div>
+  </form>
+</div>
+
+<hr class="nm-divider">
+
+<!-- Task List -->
+<div>
+  <div class="nm-section-title">Company Tasks</div>
+
+  <div class="nm-table-wrap nm-scroll-y" style="max-height: 240px;">
+    <table class="nm-table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Assigned</th>
+          <th>Status</th>
+          <th>Priority</th>
+          <th>Deadline</th>
+          <th>File</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% if tasks %}
+          {% for t in tasks %}
             <tr>
-              <th>Title</th>
-              <th>Assigned To (ID)</th>
-              <th>Status</th>
-              <th>Priority</th>
-              <th>File</th>
-              <th>Action</th>
+              <td>{{ t.title }}</td>
+
+              <!-- 🔥 FIXED -->
+              <td>{{ t.assigned_name or "Unassigned" }}</td>
+
+              <td>
+                <span class="nm-badge">
+                  {{ t.status or "Pending" }}
+                </span>
+              </td>
+
+              <td>{{ t.priority or "Medium" }}</td>
+
+              <td>{{ t.deadline or "—" }}</td>
+
+              <td>
+                {% if t.file_url %}
+                  <a href="{{ t.file_url }}" target="_blank" class="nm-link">View</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+
+              <td>
+                <form method="post"
+                      action="{{ url_for('admin_delete_task', task_id=t.id) }}"
+                      onsubmit="return confirm('Delete this task?');">
+                  <button class="nm-btn-danger">Delete</button>
+                </form>
+              </td>
             </tr>
-            </thead>
-            <tbody>
-            {% if tasks %}
-              {% for t in tasks %}
-                <tr>
-                  <td>{{ t.title }}</td>
-                  <td>{{ t.assigned_to or "—" }}</td>
-                  <td><span class="nm-badge">{{ t.status or "Pending" }}</span></td>
-                  <td>{{ t.priority or "Medium" }}</td>
-                  <td>
-                    {% if t.file_url %}
-                      <a href="{{ t.file_url }}" target="_blank" class="nm-link">View</a>
-                    {% else %}
-                      —
-                    {% endif %}
-                  </td>
-                  <td>
-                    <form method="post"
-                          action="{{ url_for('admin_delete_task', task_id=t.id) }}"
-                          onsubmit="return confirm('Delete this task?');">
-                      <button type="submit" class="nm-btn-danger">Delete</button>
-                    </form>
-                  </td>
-                </tr>
-              {% endfor %}
-            {% else %}
-              <tr>
-                <td colspan="6" class="nm-empty">No tasks created yet.</td>
-              </tr>
-            {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" class="nm-empty">No tasks created yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+
+    </table>
+  </div>
+</div>
+
+<!-- ================= END TASKS ================= -->
 
     <!-- RIGHT side: forms -->
     <section class="nm-card">

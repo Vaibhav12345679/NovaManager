@@ -331,19 +331,17 @@ def admin_dashboard():
     print(f"[admin_dashboard] company_id={company_id}")  # ✅ FIX #7
 
     # ✅ FIX #5 — Fetch REAL data (no dummy data)
+    # Try /profiles first; fallback to /employees if empty or broken
     try:
-        users = _unwrap(api_get("/profiles", params={"company_id": company_id}))
-        print(f"[admin_dashboard] users fetched: {len(users)}")
+        users = _unwrap(api_get("/profiles", params={"company_id": company_id})) or []
+        print(f"[admin_dashboard] users from /profiles: {len(users)}")
+        if not users:
+            print(f"[admin_dashboard] /profiles returned empty — falling back to /employees")
+            users = _unwrap(api_get("/employees", params={"company_id": company_id})) or []
+            print(f"[admin_dashboard] users from /employees fallback: {len(users)}")
     except Exception as e:
         print(f"[admin_dashboard] USERS ERROR: {e}")
         users = []
-
-    try:
-     employees = _unwrap(api_get("/employees", params={"company_id": company_id}))
-     print("EMPLOYEES:", employees)
-    except Exception as e:
-     print("EMPLOYEE FETCH ERROR:", e)
-     employees = []
 
     try:
         tasks = _unwrap(api_get("/tasks", params={"company_id": company_id}))
@@ -616,6 +614,55 @@ def delete_employee(user_id):
 # 11. Create Task (Admin + Manager)
 # ─────────────────────────────────────────────
 
+@app.route("/admin/create_task", methods=["POST"])
+@login_required
+def create_task():
+    prof = get_profile()
+    role = (prof or {}).get("role", "")
+    print(f"[create_task] role={role}")  # ✅ FIX #7
+
+    # ✅ FIX #1
+    if not prof or role not in ALLOWED_ROLES:
+        return "Unauthorized", 403
+
+    title       = request.form.get("title",       "").strip()
+    description = request.form.get("description", "")
+    # ✅ FIX #3 — assigned_to must come from employee dropdown
+    assigned_to = request.form.get("assigned_to") or None
+    priority    = request.form.get("priority")    or "Medium"
+    deadline    = request.form.get("deadline")    or None
+
+    print(f"[create_task] title={title} assigned_to={assigned_to} priority={priority}")  # ✅ FIX #7
+
+    file_url  = None
+    task_file = request.files.get("task_file")
+    if task_file and task_file.filename:
+        fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+        task_file.save(file_path)
+        file_url = f"/static/task_files/{fname}"
+
+    # ✅ FIX #4 — always save company_id, assigned_to, status
+    status, data = api_post("/tasks", {
+        "title":       title,
+        "description": description,
+        "company_id":  prof.get("company_id"),
+        "assigned_to": assigned_to,
+        "priority":    priority,
+        "deadline":    deadline,
+        "status":      "Pending",
+        "file_url":    file_url,
+    })
+
+    print(f"[create_task] api response status={status} data={data}")  # ✅ FIX #7
+
+    if status in (200, 201):
+        flash("Task created.", "success")
+    else:
+        error = data.get("message") or data.get("error") or "Task creation failed."
+        flash(f"{error}", "danger")
+
+    return redirect(url_for("admin_dashboard"))
 
 
 # ─────────────────────────────────────────────
@@ -728,34 +775,57 @@ def employee_dashboard():
 # 15. Manager Routes (Admin + Manager)
 # ─────────────────────────────────────────────
 
-@app.route("/admin/create_task", methods=["POST"])
+@app.route("/manager/create_task", methods=["POST"])
 @login_required
-def create_task():
+def manager_create_task():
     prof = get_profile()
+    role = (prof or {}).get("role", "")
+    print(f"[manager_create_task] role={role}")  # ✅ FIX #7
 
-    title = request.form.get("title")
-    description = request.form.get("description")
+    # ✅ FIX #1 — allow both company_admin and manager
+    if not prof or role not in ALLOWED_ROLES:
+        return "Unauthorized", 403
+
+    title       = request.form.get("title", "").strip()
+    description = request.form.get("description", "")
+    # ✅ FIX #3 — assigned_to from employee dropdown
     assigned_to = request.form.get("assigned_to") or None
-    priority = request.form.get("priority")
-    deadline = request.form.get("deadline")
+    priority    = request.form.get("priority")    or "Medium"
+    deadline    = request.form.get("deadline")    or None
 
-    file = request.files.get("task_file")
-    file_url = None
+    print(f"[manager_create_task] title={title} assigned_to={assigned_to}")  # ✅ FIX #7
 
-    if file and file.filename:
-        path = f"static/uploads/{file.filename}"
-        file.save(path)
-        file_url = "/" + path
+    if not title:
+        flash("Task title is required.", "danger")
+        return redirect(url_for("admin_dashboard"))
 
-    api_post("/tasks", {
-        "title": title,
+    file_url  = None
+    task_file = request.files.get("task_file")
+    if task_file and task_file.filename:
+        fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+        task_file.save(file_path)
+        file_url = f"/static/task_files/{fname}"
+
+    # ✅ FIX #4 — always save company_id, assigned_to, status
+    status, data = api_post("/tasks", {
+        "title":       title,
         "description": description,
-        "company_id": prof["company_id"],
+        "company_id":  prof.get("company_id"),
         "assigned_to": assigned_to,
-        "priority": priority,
-        "deadline": deadline,
-        "file_url": file_url
+        "priority":    priority,
+        "deadline":    deadline,
+        "status":      "Pending",
+        "file_url":    file_url,
     })
+
+    print(f"[manager_create_task] api response status={status} data={data}")  # ✅ FIX #7
+
+    if status in (200, 201):
+        flash("Task created.", "success")
+    else:
+        error = data.get("message") or data.get("error") or "Task creation failed."
+        flash(f"{error}", "danger")
 
     return redirect(url_for("admin_dashboard"))
 

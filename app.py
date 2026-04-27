@@ -332,7 +332,7 @@ def admin_dashboard():
 
     # ✅ FIX #5 — Fetch REAL data (no dummy data)
     try:
-        users = _unwrap(api_get("/employees", params={"company_id": company_id}))
+        users = _unwrap(api_get("/profiles", params={"company_id": company_id}))
         print(f"[admin_dashboard] users fetched: {len(users)}")
     except Exception as e:
         print(f"[admin_dashboard] USERS ERROR: {e}")

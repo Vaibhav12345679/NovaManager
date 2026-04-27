@@ -490,14 +490,19 @@
             <textarea id="task_description" name="description" placeholder="Task details"></textarea>
           </div>
           <div class="nm-field">
-            <label for="task_assigned_to">Assign To</label>
-            <select id="task_assigned_to" name="assigned_to">
-              <option value="">Unassigned</option>
-              {% for u in employees %}
-                <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
-              {% endfor %}
-            </select>
-          </div>
+  <label for="task_assigned_to">Assign To</label>
+
+  <select id="task_assigned_to" name="assigned_to">
+    <option value="">Unassigned</option>
+
+    {% for u in employees %}
+      <option value="{{ u.id }}">
+        {{ u.full_name }} ({{ u.role }})
+      </option>
+    {% endfor %}
+
+  </select>
+</div>
           <div class="nm-field">
             <label for="task_file">Upload File</label>
             <input id="task_file" type="file" name="task_file">

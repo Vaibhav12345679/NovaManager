@@ -396,8 +396,6 @@
                       —
                     {% endif %}
                   </td>
-                  <p>DEBUG USERS: {{ users }}</p>
-                  <p>DEBUG LENGTH: {{ users|length if users else 0 }}</p>
                   <td>
                     <form method="post"
                           action="{{ url_for('admin_delete_task', task_id=t.id) }}"

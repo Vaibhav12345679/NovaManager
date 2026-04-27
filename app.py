@@ -331,19 +331,17 @@ def admin_dashboard():
     print(f"[admin_dashboard] company_id={company_id}")  # ✅ FIX #7
 
     # ✅ FIX #5 — Fetch REAL data (no dummy data)
+    # Try /profiles first; fallback to /employees if empty or broken
     try:
-        users = _unwrap(api_get("/employees", params={"company_id": company_id}))
-        print(f"[admin_dashboard] users fetched: {len(users)}")
+        users = _unwrap(api_get("/profiles", params={"company_id": company_id})) or []
+        print(f"[admin_dashboard] users from /profiles: {len(users)}")
+        if not users:
+            print(f"[admin_dashboard] /profiles returned empty — falling back to /employees")
+            users = _unwrap(api_get("/employees", params={"company_id": company_id})) or []
+            print(f"[admin_dashboard] users from /employees fallback: {len(users)}")
     except Exception as e:
         print(f"[admin_dashboard] USERS ERROR: {e}")
         users = []
-
-    try:
-     employees = _unwrap(api_get("/employees", params={"company_id": company_id}))
-     print("EMPLOYEES:", employees)
-    except Exception as e:
-     print("EMPLOYEE FETCH ERROR:", e)
-     employees = []
 
     try:
         tasks = _unwrap(api_get("/tasks", params={"company_id": company_id}))

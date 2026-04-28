@@ -518,10 +518,19 @@ def edit_dashboard(role_id):
 
     # SAVE HTML
     if request.method == "POST":
-        html_code = request.form.get("html_code", "").strip()
+    html_code = request.form.get("html_code")
 
-        print("[SAVE] role_id =", role_id, "len =", len(html_code))
+    print("====== SAVE DEBUG ======")
+    print("role_id:", role_id)
+    print("html_code:", html_code)
+    print("length:", len(html_code) if html_code else 0)
 
+    if not html_code:
+        print("❌ html_code is EMPTY")
+        flash("No data received!", "danger")
+        return redirect(url_for("edit_dashboard", role_id=role_id))
+
+    try:
         db.execute("""
             INSERT INTO role_dashboards (role_id, html)
             VALUES (?, ?)
@@ -530,16 +539,21 @@ def edit_dashboard(role_id):
 
         db.commit()
 
-        print("[SAVE DONE]")
+        print("✅ SAVE SUCCESS")
 
-        flash("Dashboard saved!", "success")
-        return redirect(url_for("edit_dashboard", role_id=role_id))
+        # VERIFY
+        row = db.execute(
+            "SELECT html FROM role_dashboards WHERE role_id=?",
+            (role_id,)
+        ).fetchone()
 
-    return render_template(
-        "edit_dashboard.html",
-        role=role_obj,
-        html_code=html_code
-    )
+        print("VERIFY FOUND:", bool(row))
+
+    except Exception as e:
+        print("❌ SAVE ERROR:", e)
+
+    flash("Dashboard saved!", "success")
+    return redirect(url_for("edit_dashboard", role_id=role_id))
 # ─────────────────────────────────────────────
 # 8. Create Role (Admin + Manager)
 # ─────────────────────────────────────────────

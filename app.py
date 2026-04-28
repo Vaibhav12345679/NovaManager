@@ -215,25 +215,20 @@ def get_profile():
 # ─────────────────────────────────────────────
 
 def get_role_dashboard(role_id):
-    row = db.execute(
-        "SELECT html FROM role_dashboards WHERE role_id=?",
-        (role_id,)
-    ).fetchone()
-    return row["html"] if row else None
-
-
-def get_role_dashboard(role_id):
     if not role_id:
         return None
 
-    role_id = str(role_id)
-
     row = db.execute(
         "SELECT html FROM role_dashboards WHERE role_id=?",
-        (role_id,)
+        (str(role_id),)
     ).fetchone()
 
-    return row["html"] if row else None
+    if row:
+        print("[LOAD FOUND]", role_id)
+        return row["html"]
+
+    print("[LOAD NOT FOUND]", role_id)
+    return None
 
 # ─────────────────────────────────────────────
 # 4. Routes

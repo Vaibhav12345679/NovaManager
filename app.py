@@ -479,11 +479,16 @@ def edit_dashboard(role_id):
 
     flash("Dashboard saved!", "success")
     return redirect(url_for("edit_dashboard", role_id=role_id))
+   row = db.execute(
+    "SELECT html FROM role_dashboards WHERE role_id=?",
+    (role_id,)
+).fetchone()
 
+html_code = row["html"] if row else ""
     return render_template(
         "edit_dashboard_json.html",
         role=role_obj,
-        layout=layout
+        html_code=html_code
     )
 
 

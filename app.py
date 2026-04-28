@@ -490,21 +490,16 @@ def edit_dashboard(role_id):
     if not prof or role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
+    # 🔥 ensure role_id is always string (consistent)
+    role_id = str(role_id)
+
     role_data = api_get(f"/roles/{role_id}") or {"id": role_id, "name": f"Role {role_id}"}
     role_obj = role_data if isinstance(role_data, dict) else {
         "id": role_id,
         "name": f"Role {role_id}"
     }
 
-    # LOAD layout (existing)
-    row = db.execute(
-        "SELECT layout FROM dashboard_templates WHERE role_id=?",
-        (role_id,)
-    ).fetchone()
-
-    layout = row["layout"] if row else "[]"
-
-    # LOAD html_code from role_dashboards (new)
+    # ✅ LOAD HTML (ONLY THIS MATTERS NOW)
     html_row = db.execute(
         "SELECT html FROM role_dashboards WHERE role_id=?",
         (role_id,)
@@ -512,25 +507,33 @@ def edit_dashboard(role_id):
 
     html_code = html_row["html"] if html_row else ""
 
-    # SAVE layout + html_code
+    print("[LOAD] role_id =", role_id, "html_len =", len(html_code))
+
+    # ✅ SAVE HTML ONLY (remove confusion)
     if request.method == "POST":
-        layout = request.form.get("layout", "[]")
+        html_code = request.form.get("html_code", "").strip()
 
-        db.execute("""
-            INSERT INTO dashboard_templates (role_id, layout)
-            VALUES (?, ?)
-            ON CONFLICT(role_id) DO UPDATE SET layout=excluded.layout
-        """, (role_id, layout))
+        print("[SAVE] role_id =", role_id, "html_len =", len(html_code))
 
-        # Save html_code to role_dashboards (new)
-        html_code = request.form.get("html_code", "")
-        db.execute("""
-            INSERT INTO role_dashboards (role_id, html)
-            VALUES (?, ?)
-            ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
-        """, (role_id, html_code))
+        try:
+            db.execute("""
+                INSERT INTO role_dashboards (role_id, html)
+                VALUES (?, ?)
+                ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
+            """, (role_id, html_code))
 
-        db.commit()
+            db.commit()
+
+            # 🔥 VERIFY SAVE
+            test = db.execute(
+                "SELECT html FROM role_dashboards WHERE role_id=?",
+                (role_id,)
+            ).fetchone()
+
+            print("[VERIFY] saved =", bool(test))
+
+        except Exception as e:
+            print("[ERROR SAVE]", e)
 
         flash("Dashboard saved!", "success")
         return redirect(url_for("edit_dashboard", role_id=role_id))
@@ -538,8 +541,7 @@ def edit_dashboard(role_id):
     return render_template(
         "edit_dashboard.html",
         role=role_obj,
-        layout=layout,
-        html_code=html_code,
+        html_code=html_code
     )
 
 

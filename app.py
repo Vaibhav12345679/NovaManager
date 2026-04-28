@@ -756,29 +756,32 @@ def employee_dashboard():
     if not prof:
         return redirect(url_for("login"))
 
-    user_id = prof.get("id", "")
-    print(f"[employee_dashboard] user_id={user_id}")  # ✅ FIX #7
+    user_id = prof.get("id")
+    company_id = prof.get("company_id")
+    role = prof.get("role")
 
-    # ✅ FIX #4 — fetch tasks filtered by assigned_to
-    tasks   = _unwrap(api_get("/tasks", params={"assigned_to": user_id}))
+    print(f"[employee_dashboard] user_id={user_id}, role={role}, company_id={company_id}")
 
-    total     = len(tasks)
+    # ✅ Fetch tasks assigned to this user
+    tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id}))
+
+    total = len(tasks)
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
-    percent   = int((completed / total) * 100) if total else 0
+    percent = int((completed / total) * 100) if total else 0
 
-    # Load role-specific HTML dashboard if set
-    role_id = str("2")
-    dashboard_html = get_role_dashboard(role_id)
+    # ✅ Load dashboard using role + company (NEW SYSTEM)
+    dashboard_html = get_role_dashboard(role, company_id)
+
+    print("[DASHBOARD_HTML]", dashboard_html[:50] if dashboard_html else "None")
 
     return render_template(
         "employee_dashboard_multi.html",
         profile=prof,
         tasks=tasks,
         percent=percent,
-        allowed_roles=ALLOWED_ROLES,  # ✅ FIX #6 — for template conditional UI
+        allowed_roles=ALLOWED_ROLES,
         dashboard_html=dashboard_html,
     )
-
 
 # ─────────────────────────────────────────────
 # 15. Manager Routes (Admin + Manager)

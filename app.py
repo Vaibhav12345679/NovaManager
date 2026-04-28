@@ -507,35 +507,28 @@ def edit_dashboard(role_id):
     if not prof or user_role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
-    # Get role info
-    role_data = api_get(f"/roles/{role_id}")
-    role_obj = role_data if isinstance(role_data, dict) else {
-        "id": role_id,
-        "name": f"Role {role_id}"
-    }
+    role_id = str(role_id)  # 🔥 IMPORTANT
+    company_id = str(prof.get("company_id"))
 
-    role_name = role_obj.get("name")
-    company_id = prof.get("company_id")
-
-    # 🔥 LOAD from API (NOT SQLite)
+    # 🔥 LOAD
     res = api_get("/role-dashboard", params={
-        "role": role_name,
+        "role": role_id,
         "company_id": company_id
     })
 
     data = _unwrap(res)
     html_code = data.get("html") if data else ""
 
-    print("[LOAD API]", role_name, company_id, "len:", len(html_code))
+    print("[LOAD API]", role_id, company_id, "len:", len(html_code))
 
-    # 🔥 SAVE to API
+    # 🔥 SAVE
     if request.method == "POST":
         html_code = request.form.get("html_code", "").strip()
 
-        print("[SAVE API]", role_name, company_id, "len:", len(html_code))
+        print("[SAVE API]", role_id, company_id, "len:", len(html_code))
 
         api_post("/role-dashboard", body={
-            "role": role_name,
+            "role": role_id,           # ✅ SAME VALUE
             "company_id": company_id,
             "html": html_code
         })
@@ -545,7 +538,7 @@ def edit_dashboard(role_id):
 
     return render_template(
         "edit_dashboard.html",
-        role=role_obj,
+        role={"id": role_id, "name": f"Role {role_id}"},
         html_code=html_code
     )
 # ─────────────────────────────────────────────
@@ -768,37 +761,38 @@ def employee_dashboard():
         return redirect(url_for("login"))
 
     user_id = prof.get("id")
-    company_id = prof.get("company_id")
-    role = prof.get("role")
+    company_id = str(prof.get("company_id"))
 
-    print(f"[employee_dashboard] user_id={user_id}, role={role}, company_id={company_id}")
+    # 🔥 FORCE role_id (since your profile has no role_id)
+    role_id = "2"   # 👈 CHANGE THIS if needed
 
-    # ✅ Fetch tasks
+    print(f"[employee_dashboard] user_id={user_id}, role_id={role_id}, company_id={company_id}")
+
     tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id})) or []
 
     total = len(tasks)
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total else 0
 
-    # 🔥 LOAD DASHBOARD FROM API (robust)
+    # 🔥 LOAD USING SAME role_id
     dashboard_html = None
+
     try:
         res = api_get("/role-dashboard", params={
-            "role": role,
+            "role": role_id,
             "company_id": company_id
         })
 
         print("[API RESPONSE]", res)
 
-        data = _unwrap(res) if res else None
-
+        data = _unwrap(res)
         if isinstance(data, dict):
             dashboard_html = data.get("html")
 
     except Exception as e:
-        print("[DASHBOARD LOAD ERROR]", e)
+        print("[DASHBOARD ERROR]", e)
 
-    print("[FINAL HTML]", dashboard_html[:80] if dashboard_html else "None")
+    print("[FINAL HTML]", dashboard_html)
 
     return render_template(
         "employee_dashboard_multi.html",

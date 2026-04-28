@@ -32,6 +32,8 @@ app.config.update(
     SESSION_COOKIE_SAMESITE = "None",
 )
 
+
+print("DB PATH:", os.path.abspath("database.db"))
 # ─────────────────────────────────────────────
 # 1. File Upload
 # ─────────────────────────────────────────────
@@ -257,6 +259,11 @@ def index():
     return redirect(url_for("employee_dashboard"))
 
 
+@app.route("/debug/db")
+def debug_db():
+    rows = db.execute("SELECT * FROM role_dashboards").fetchall()
+    return {"data": [dict(r) for r in rows]}
+    
 # ─── Register ───
 
 @app.route("/register", methods=["GET", "POST"])

@@ -775,7 +775,7 @@ def employee_dashboard():
     percent   = int((completed / total) * 100) if total else 0
 
     # Load role-specific HTML dashboard if set
-    role_id = str(prof.get("role_id") or "")
+    role_id = str(prof.get("role_id") or "2")
     dashboard_html = get_role_dashboard(role_id)
 
     return render_template(

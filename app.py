@@ -762,17 +762,32 @@ def employee_dashboard():
 
     print(f"[employee_dashboard] user_id={user_id}, role={role}, company_id={company_id}")
 
-    # ✅ Fetch tasks assigned to this user
-    tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id}))
+    # ✅ Fetch tasks
+    tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id})) or []
 
     total = len(tasks)
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total else 0
 
-    # ✅ Load dashboard using role + company (NEW SYSTEM)
-    dashboard_html = get_role_dashboard(role, company_id)
+    # 🔥 LOAD DASHBOARD FROM API (robust)
+    dashboard_html = None
+    try:
+        res = api_get("/role-dashboard", params={
+            "role": role,
+            "company_id": company_id
+        })
 
-    print("[DASHBOARD_HTML]", dashboard_html[:50] if dashboard_html else "None")
+        print("[API RESPONSE]", res)
+
+        data = _unwrap(res) if res else None
+
+        if isinstance(data, dict):
+            dashboard_html = data.get("html")
+
+    except Exception as e:
+        print("[DASHBOARD LOAD ERROR]", e)
+
+    print("[FINAL HTML]", dashboard_html[:80] if dashboard_html else "None")
 
     return render_template(
         "employee_dashboard_multi.html",
@@ -780,7 +795,7 @@ def employee_dashboard():
         tasks=tasks,
         percent=percent,
         allowed_roles=ALLOWED_ROLES,
-        dashboard_html=dashboard_html,
+        dashboard_html=dashboard_html or "",
     )
 
 # ─────────────────────────────────────────────

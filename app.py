@@ -217,12 +217,13 @@ def get_profile():
 # ─────────────────────────────────────────────
 
 def get_role_dashboard(role, company_id):
-    row = db.execute(
-        "SELECT html FROM role_dashboards WHERE role=? AND company_id=?",
-        (role, company_id)
-    ).fetchone()
+    res = api_get("/role-dashboard", params={
+        "role": role,
+        "company_id": company_id
+    })
 
-    return row["html"] if row else None
+    data = _unwrap(res)
+    return data.get("html") if data else None
 # ─────────────────────────────────────────────
 # 4. Routes
 # ─────────────────────────────────────────────

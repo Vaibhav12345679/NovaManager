@@ -517,7 +517,7 @@ def edit_dashboard(role_id):
     if not prof or user_role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
-    role_id = str(role_id)  # 🔥 IMPORTANT
+    role_name = str(role_id)  # 🔥 IMPORTANT
     company_id = str(prof.get("company_id"))
 
     # 🔥 LOAD

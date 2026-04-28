@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h3>Edit Dashboard</h3>
+
+<form method="POST">
+    <textarea name="html_code" rows="20" style="width:100%;">
+{{ html_code or "" }}
+    </textarea>
+
+    <br><br>
+    <button type="submit">Save</button>
+</form>
+
+{% endblock %}

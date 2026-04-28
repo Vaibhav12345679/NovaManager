@@ -536,7 +536,7 @@ def edit_dashboard(role_id):
         return redirect(url_for("edit_dashboard", role_id=role_id))
 
     return render_template(
-        "edit_dashboard_json.html",
+        "edit_dashboard.html",
         role=role_obj,
         layout=layout,
         html_code=html_code,

@@ -523,7 +523,7 @@ def edit_dashboard(role_id):
 
         print("[SAVE API]", role_name, company_id, "len:", len(html_code))
 
-        api_post("/role-dashboard", data={
+        api_post("/role-dashboard", body={
             "role": role_name,
             "company_id": company_id,
             "html": html_code

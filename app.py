@@ -2,6 +2,7 @@ import os
 import importlib.util
 
 import json
+import sqlite3
 
 import chardet
 import requests
@@ -45,7 +46,33 @@ def allowed_file(filename: str) -> bool:
 
 
 # ─────────────────────────────────────────────
-# 2. API helpers  (no Supabase, ever)
+# 2. Database Init  (SQLite – local tables only)
+# ─────────────────────────────────────────────
+DB_PATH = "dashboard.db"
+db = sqlite3.connect(DB_PATH, check_same_thread=False)
+db.row_factory = sqlite3.Row
+
+db.execute("""
+    CREATE TABLE IF NOT EXISTS dashboard_templates (
+        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+        role_id TEXT UNIQUE,
+        layout  TEXT
+    )
+""")
+
+db.execute("""
+    CREATE TABLE IF NOT EXISTS role_dashboards (
+        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+        role_id TEXT UNIQUE,
+        html    TEXT
+    )
+""")
+
+db.commit()
+
+
+# ─────────────────────────────────────────────
+# 2b. API helpers  (no Supabase, ever)
 # ─────────────────────────────────────────────
 
 def _auth_headers() -> dict:
@@ -181,6 +208,18 @@ def get_profile():
     except Exception as e:
         print(f"[get_profile] ERROR: {e}")
         return None
+
+
+# ─────────────────────────────────────────────
+# 3b. Role Dashboard HTML helper
+# ─────────────────────────────────────────────
+
+def get_role_dashboard(role_id):
+    row = db.execute(
+        "SELECT html FROM role_dashboards WHERE role_id=?",
+        (role_id,)
+    ).fetchone()
+    return row["html"] if row else None
 
 
 # ─────────────────────────────────────────────
@@ -457,7 +496,7 @@ def edit_dashboard(role_id):
         "name": f"Role {role_id}"
     }
 
-    # LOAD layout
+    # LOAD layout (existing)
     row = db.execute(
         "SELECT layout FROM dashboard_templates WHERE role_id=?",
         (role_id,)
@@ -465,30 +504,42 @@ def edit_dashboard(role_id):
 
     layout = row["layout"] if row else "[]"
 
-    # SAVE layout
+    # LOAD html_code from role_dashboards (new)
+    html_row = db.execute(
+        "SELECT html FROM role_dashboards WHERE role_id=?",
+        (role_id,)
+    ).fetchone()
+
+    html_code = html_row["html"] if html_row else ""
+
+    # SAVE layout + html_code
     if request.method == "POST":
-    html_code = request.form.get("html_code", "")
+        layout = request.form.get("layout", "[]")
 
-    db.execute("""
-        INSERT INTO role_dashboards (role_id, html)
-        VALUES (?, ?)
-        ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
-    """, (role_id, html_code))
+        db.execute("""
+            INSERT INTO dashboard_templates (role_id, layout)
+            VALUES (?, ?)
+            ON CONFLICT(role_id) DO UPDATE SET layout=excluded.layout
+        """, (role_id, layout))
 
-    db.commit()
+        # Save html_code to role_dashboards (new)
+        html_code = request.form.get("html_code", "")
+        db.execute("""
+            INSERT INTO role_dashboards (role_id, html)
+            VALUES (?, ?)
+            ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
+        """, (role_id, html_code))
 
-    flash("Dashboard saved!", "success")
-    return redirect(url_for("edit_dashboard", role_id=role_id))
-   row = db.execute(
-    "SELECT html FROM role_dashboards WHERE role_id=?",
-    (role_id,)
-).fetchone()
+        db.commit()
 
-html_code = row["html"] if row else ""
+        flash("Dashboard saved!", "success")
+        return redirect(url_for("edit_dashboard", role_id=role_id))
+
     return render_template(
         "edit_dashboard_json.html",
         role=role_obj,
-        html_code=html_code
+        layout=layout,
+        html_code=html_code,
     )
 
 
@@ -721,12 +772,17 @@ def employee_dashboard():
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent   = int((completed / total) * 100) if total else 0
 
+    # Load role-specific HTML dashboard if set
+    role_id        = prof.get("role_id")
+    dashboard_html = get_role_dashboard(role_id) if role_id else None
+
     return render_template(
         "employee_dashboard.html",
         profile=prof,
         tasks=tasks,
         percent=percent,
         allowed_roles=ALLOWED_ROLES,  # ✅ FIX #6 — for template conditional UI
+        dashboard_html=dashboard_html,
     )
 
 

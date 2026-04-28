@@ -216,22 +216,13 @@ def get_profile():
 # 3b. Role Dashboard HTML helper
 # ─────────────────────────────────────────────
 
-def get_role_dashboard(role_id):
-    if not role_id:
-        return None
-
+def get_role_dashboard(role, company_id):
     row = db.execute(
-        "SELECT html FROM role_dashboards WHERE role_id=?",
-        (str(role_id),)
+        "SELECT html FROM role_dashboards WHERE role=? AND company_id=?",
+        (role, company_id)
     ).fetchone()
 
-    if row:
-        print("[LOAD FOUND]", role_id)
-        return row["html"]
-
-    print("[LOAD NOT FOUND]", role_id)
-    return None
-
+    return row["html"] if row else None
 # ─────────────────────────────────────────────
 # 4. Routes
 # ─────────────────────────────────────────────
@@ -527,13 +518,14 @@ def edit_dashboard(role_id):
         print("ROLE:", role_id)
         print("HTML:", html_code)
 
-        db.execute("""
-            INSERT INTO role_dashboards (role_id, html)
-            VALUES (?, ?)
-            ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
-        """, (role_id, html_code))
+        company_id = prof.get("company_id")
+        role_name = role_obj.get("name")   # IMPORTANT
 
-        db.commit()
+        db.execute("""
+           INSERT INTO role_dashboards (role, company_id, html)
+           VALUES (?, ?, ?)
+           ON CONFLICT(role, company_id) DO UPDATE SET html=excluded.html
+           """, (role_name, company_id, html_code))
 
         print("SAVED SUCCESS")
 

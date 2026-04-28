@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Employee Dashboard</h2>
+
+<!-- 🔥 ROLE BASED CUSTOM HTML -->
+{% if dashboard_html %}
+  <div>
+    {{ dashboard_html | safe }}
+  </div>
+{% else %}
+  <p>No custom dashboard assigned.</p>
+{% endif %}
+
+<hr>
+
+<h3>Your Tasks</h3>
+
+{% if tasks %}
+  <ul>
+    {% for t in tasks %}
+      <li>{{ t.title }} - {{ t.status }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No tasks</p>
+{% endif %}
+
+{% endblock %}

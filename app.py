@@ -490,7 +490,7 @@ def edit_dashboard(role_id):
     if not prof or role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
-    role_data = api_get(f"/roles/{role_id}")
+    role_data = api_get(f"/roles/{role_id}") or {"id": role_id, "name": f"Role {role_id}"}
     role_obj = role_data if isinstance(role_data, dict) else {
         "id": role_id,
         "name": f"Role {role_id}"

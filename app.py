@@ -524,39 +524,28 @@ def edit_dashboard(role_id):
 
     # ✅ SAVE HTML ONLY (remove confusion)
     if request.method == "POST":
-        html_code = request.form.get("html_code", "").strip()
+    html_code = request.form.get("html_code", "").strip()
 
-        print("[SAVE] role_id =", role_id, "html_len =", len(html_code))
+    print("[SAVE] role_id =", role_id, "len =", len(html_code))
 
-        try:
-            db.execute("""
-                INSERT INTO role_dashboards (role_id, html)
-                VALUES (?, ?)
-                ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
-            """, (role_id, html_code))
+    db.execute("""
+        INSERT INTO role_dashboards (role_id, html)
+        VALUES (?, ?)
+        ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
+    """, (str(role_id), html_code))
 
-            db.commit()
+    db.commit()
 
-            # 🔥 VERIFY SAVE
-            test = db.execute(
-                "SELECT html FROM role_dashboards WHERE role_id=?",
-                (role_id,)
-            ).fetchone()
+    # VERIFY
+    test = db.execute(
+        "SELECT html FROM role_dashboards WHERE role_id=?",
+        (str(role_id),)
+    ).fetchone()
 
-            print("[VERIFY] saved =", bool(test))
+    print("[VERIFY]", bool(test))
 
-        except Exception as e:
-            print("[ERROR SAVE]", e)
-
-        flash("Dashboard saved!", "success")
-        return redirect(url_for("edit_dashboard", role_id=role_id))
-
-    return render_template(
-        "edit_dashboard.html",
-        role=role_obj,
-        html_code=html_code
-    )
-
+    flash("Dashboard saved!", "success")
+    return redirect(url_for("edit_dashboard", role_id=role_id))
 
 # ─────────────────────────────────────────────
 # 8. Create Role (Admin + Manager)

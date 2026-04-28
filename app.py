@@ -777,7 +777,7 @@ def employee_dashboard():
     dashboard_html = get_role_dashboard(role_id) if role_id else None
 
     return render_template(
-        "employee_dashboard.html",
+        "employee_dashboard_multi.html",
         profile=prof,
         tasks=tasks,
         percent=percent,

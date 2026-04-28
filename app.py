@@ -497,7 +497,6 @@ def edit_dashboard(role_id):
     if not prof or role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
-    # ensure role_id is string
     role_id = str(role_id)
 
     role_data = api_get(f"/roles/{role_id}") or {"id": role_id, "name": f"Role {role_id}"}
@@ -506,7 +505,6 @@ def edit_dashboard(role_id):
         "name": f"Role {role_id}"
     }
 
-    # LOAD HTML
     html_row = db.execute(
         "SELECT html FROM role_dashboards WHERE role_id=?",
         (role_id,)
@@ -516,24 +514,30 @@ def edit_dashboard(role_id):
 
     print("[LOAD] role_id =", role_id, "html_len =", len(html_code))
 
-    # SAVE HTML
     if request.method == "POST":
-     html_code = request.form.get("html_code")
+        html_code = request.form.get("html_code", "")
 
-     print("ROLE:", role_id)
-     print("HTML:", html_code)
+        print("ROLE:", role_id)
+        print("HTML:", html_code)
 
-     db.execute("""
-        INSERT INTO role_dashboards (role_id, html)
-        VALUES (?, ?)
-        ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
-     """, (role_id, html_code))
+        db.execute("""
+            INSERT INTO role_dashboards (role_id, html)
+            VALUES (?, ?)
+            ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
+        """, (role_id, html_code))
 
-     db.commit()
+        db.commit()
 
-     print("SAVED SUCCESS")
+        print("SAVED SUCCESS")
 
-     return redirect(url_for("edit_dashboard", role_id=role_id))
+        return redirect(url_for("edit_dashboard", role_id=role_id))
+
+    # ✅ THIS MUST ALWAYS EXIST
+    return render_template(
+        "edit_dashboard.html",
+        role=role_obj,
+        html_code=html_code
+    )
 # ─────────────────────────────────────────────
 # 8. Create Role (Admin + Manager)
 # ─────────────────────────────────────────────

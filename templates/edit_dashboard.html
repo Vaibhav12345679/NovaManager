@@ -4,15 +4,32 @@
 <h3>Edit Dashboard</h3>
 
 <form method="POST">
-    <textarea id="code_editor" name="html_code"></textarea>
+    <!-- Hidden textarea (real form field) -->
+    <textarea id="code_editor" name="html_code" style="display:none;">{{ html_code or "" }}</textarea>
 
-    <br><br>
+    <!-- Visible Ace editor -->
+    <div id="editor" style="height:400px; width:100%; border:1px solid #ccc;"></div>
+
+    <br>
     <button type="submit">Save</button>
 </form>
+
+<!-- Ace Editor CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.1/ace.js"></script>
+
 <script>
-document.querySelector("form").addEventListener("submit", function () {
-    document.getElementById("code_editor").value = editor.getValue();
-});
+    // Create editor
+    var editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+    editor.session.setMode("ace/mode/html");
+
+    // Load existing code from backend
+    editor.setValue(document.getElementById("code_editor").value || "", -1);
+
+    // On submit → copy editor content into textarea
+    document.querySelector("form").addEventListener("submit", function () {
+        document.getElementById("code_editor").value = editor.getValue();
+    });
 </script>
 
 {% endblock %}

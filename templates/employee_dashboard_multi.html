@@ -2,9 +2,11 @@
 {% block content %}
 
 {% if dashboard_html %}
-    {{ dashboard_html | safe }}
+    <div>
+        {{ dashboard_html | safe }}
+    </div>
 {% else %}
-    <h2 style="color:red;">No dashboard assigned for this role</h2>
+    <h2>No dashboard configured</h2>
 {% endif %}
 
 <h2>Employee Dashboard</h2>

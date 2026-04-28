@@ -217,13 +217,24 @@ def get_profile():
 # ─────────────────────────────────────────────
 
 def get_role_dashboard(role, company_id):
+    role = str(role).strip()
+    company_id = str(company_id).strip()
+
     res = api_get("/role-dashboard", params={
         "role": role,
         "company_id": company_id
     })
 
+    print("[API RAW]", res)
+
     data = _unwrap(res)
-    return data.get("html") if data else None
+
+    print("[UNWRAPPED]", data)
+
+    if isinstance(data, dict):
+        return data.get("html")
+
+    return None
 # ─────────────────────────────────────────────
 # 4. Routes
 # ─────────────────────────────────────────────

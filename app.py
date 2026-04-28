@@ -1,6 +1,8 @@
 import os
 import importlib.util
 
+import json
+
 import chardet
 import requests
 from dotenv import load_dotenv
@@ -512,7 +514,7 @@ def edit_dashboard(role_id):
         layout_json=layout_json
     )
 
-  import json
+
 
  # ---------------- JSON DASHBOARD ----------------
  if request.method == "POST" and "layout_json" in request.form:

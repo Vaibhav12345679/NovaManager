@@ -493,14 +493,45 @@ def edit_dashboard(role_id):
             file_content = raw.decode(detected.get("encoding") or "utf-8")
         except Exception as exc:
             file_content = f"Cannot read file: {exc}"
+    layout_json = "[]"
 
+    row = db.execute(
+      "SELECT layout FROM dashboard_templates WHERE role_id=?",
+       (role_id,)
+     ).fetchone()
+
+    if row:
+     layout_json = row["layout"]
+     
     return render_template(
         "edit_dashboard_multi.html",
         role=role_obj,
         files=files,
         current_file=current_file,
         file_content=file_content,
+        layout_json=layout_json
     )
+
+  import json
+
+ # ---------------- JSON DASHBOARD ----------------
+ if request.method == "POST" and "layout_json" in request.form:
+    layout = request.form.get("layout_json")
+
+    try:
+        json.loads(layout)  # validate JSON
+
+        db.execute("""
+            INSERT INTO dashboard_templates (role_id, layout)
+            VALUES (?, ?)
+            ON CONFLICT(role_id) DO UPDATE SET layout=excluded.layout
+        """, (role_id, layout))
+        db.commit()
+
+        flash("Dashboard layout saved", "success")
+
+    except Exception as e:
+        flash(f"Invalid JSON: {e}", "danger")
 
 
 # ─────────────────────────────────────────────
@@ -701,7 +732,7 @@ def reports_page():
     for t in tasks:
         assigned = str(t.get("assigned_to") or "Unassigned")
         tasks_per_employee[assigned] = tasks_per_employee.get(assigned, 0) + 1
-
+    
     return render_template(
         "reports.html",
         total=total,

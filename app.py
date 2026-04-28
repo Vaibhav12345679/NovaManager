@@ -222,6 +222,19 @@ def get_role_dashboard(role_id):
     return row["html"] if row else None
 
 
+def get_role_dashboard(role_id):
+    if not role_id:
+        return None
+
+    role_id = str(role_id)
+
+    row = db.execute(
+        "SELECT html FROM role_dashboards WHERE role_id=?",
+        (role_id,)
+    ).fetchone()
+
+    return row["html"] if row else None
+
 # ─────────────────────────────────────────────
 # 4. Routes
 # ─────────────────────────────────────────────
@@ -775,8 +788,8 @@ def employee_dashboard():
     percent   = int((completed / total) * 100) if total else 0
 
     # Load role-specific HTML dashboard if set
-    role_id        = prof.get("role_id")
-    dashboard_html = get_role_dashboard(role_id) if role_id else None
+    role_id = str(prof.get("role_id") or "")
+    dashboard_html = get_role_dashboard(role_id)
 
     return render_template(
         "employee_dashboard_multi.html",

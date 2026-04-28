@@ -491,48 +491,47 @@ def role_dashboard(role_id):
 @login_required
 def edit_dashboard(role_id):
     prof = get_profile()
-    role = (prof or {}).get("role", "")
+    user_role = (prof or {}).get("role", "")
 
-    if not prof or role not in ALLOWED_ROLES:
+    if not prof or user_role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
-    role_id = str(role_id)
-
-    role_data = api_get(f"/roles/{role_id}") or {"id": role_id, "name": f"Role {role_id}"}
+    # Get role info
+    role_data = api_get(f"/roles/{role_id}")
     role_obj = role_data if isinstance(role_data, dict) else {
         "id": role_id,
         "name": f"Role {role_id}"
     }
 
-    html_row = db.execute(
-        "SELECT html FROM role_dashboards WHERE role_id=?",
-        (role_id,)
-    ).fetchone()
+    role_name = role_obj.get("name")
+    company_id = prof.get("company_id")
 
-    html_code = html_row["html"] if html_row else ""
+    # 🔥 LOAD from API (NOT SQLite)
+    res = api_get("/role-dashboard", params={
+        "role": role_name,
+        "company_id": company_id
+    })
 
-    print("[LOAD] role_id =", role_id, "html_len =", len(html_code))
+    data = _unwrap(res)
+    html_code = data.get("html") if data else ""
 
+    print("[LOAD API]", role_name, company_id, "len:", len(html_code))
+
+    # 🔥 SAVE to API
     if request.method == "POST":
-        html_code = request.form.get("html_code", "")
+        html_code = request.form.get("html_code", "").strip()
 
-        print("ROLE:", role_id)
-        print("HTML:", html_code)
+        print("[SAVE API]", role_name, company_id, "len:", len(html_code))
 
-        company_id = prof.get("company_id")
-        role_name = role_obj.get("name")   # IMPORTANT
+        api_post("/role-dashboard", json={
+            "role": role_name,
+            "company_id": company_id,
+            "html": html_code
+        })
 
-        db.execute("""
-           INSERT INTO role_dashboards (role, company_id, html)
-           VALUES (?, ?, ?)
-           ON CONFLICT(role, company_id) DO UPDATE SET html=excluded.html
-           """, (role_name, company_id, html_code))
-
-        print("SAVED SUCCESS")
-
+        flash("Dashboard saved!", "success")
         return redirect(url_for("edit_dashboard", role_id=role_id))
 
-    # ✅ THIS MUST ALWAYS EXIST
     return render_template(
         "edit_dashboard.html",
         role=role_obj,

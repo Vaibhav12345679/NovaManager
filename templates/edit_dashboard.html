@@ -4,12 +4,15 @@
 <h3>Edit Dashboard</h3>
 
 <form method="POST">
-    <textarea name="html_code" rows="20" style="width:100%;">
-{{ html_code or "" }}
-    </textarea>
+    <textarea id="code_editor" name="html_code"></textarea>
 
     <br><br>
     <button type="submit">Save</button>
 </form>
+<script>
+document.querySelector("form").addEventListener("submit", function () {
+    document.getElementById("code_editor").value = editor.getValue();
+});
+</script>
 
 {% endblock %}

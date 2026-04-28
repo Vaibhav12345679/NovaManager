@@ -517,31 +517,38 @@ def edit_dashboard(role_id):
     if not prof or user_role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
-    role_name = str(role_id)  # 🔥 IMPORTANT
+    # 🔥 ALWAYS USE STRING ROLE_ID
+    role_id = str(role_id)
     company_id = str(prof.get("company_id"))
 
-    # 🔥 LOAD
+    # 🔥 LOAD (must match what you SAVE)
     res = api_get("/role-dashboard", params={
         "role": role_id,
         "company_id": company_id
     })
 
+    print("[LOAD PARAMS]", role_id, company_id)
+    print("[LOAD RAW]", res)
+
     data = _unwrap(res)
-    html_code = data.get("html") if data else ""
+    html_code = data.get("html") if isinstance(data, dict) else ""
 
-    print("[LOAD API]", role_id, company_id, "len:", len(html_code))
+    print("[LOAD HTML LEN]", len(html_code))
 
-    # 🔥 SAVE
+    # 🔥 SAVE (same keys as LOAD)
     if request.method == "POST":
         html_code = request.form.get("html_code", "").strip()
 
-        print("[SAVE API]", role_id, company_id, "len:", len(html_code))
+        print("[SAVE PARAMS]", role_id, company_id)
+        print("[SAVE HTML LEN]", len(html_code))
 
-        api_post("/role-dashboard", body={
-            "role": role_id,           # ✅ SAME VALUE
+        status, resp = api_post("/role-dashboard", body={
+            "role": role_id,
             "company_id": company_id,
             "html": html_code
         })
+
+        print("[SAVE RESPONSE]", status, resp)
 
         flash("Dashboard saved!", "success")
         return redirect(url_for("edit_dashboard", role_id=role_id))
@@ -773,10 +780,10 @@ def employee_dashboard():
     user_id = prof.get("id")
     company_id = str(prof.get("company_id"))
 
-    # 🔥 FORCE role_id (since your profile has no role_id)
-    role_id = "2"   # 👈 CHANGE THIS if needed
+    # 🔥 IMPORTANT: MUST MATCH WHAT ADMIN USED
+    role_id = str(prof.get("role_id") or "2")   # change fallback if needed
 
-    print(f"[employee_dashboard] user_id={user_id}, role_id={role_id}, company_id={company_id}")
+    print("[EMPLOYEE PARAMS]", role_id, company_id)
 
     tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id})) or []
 
@@ -784,8 +791,8 @@ def employee_dashboard():
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total else 0
 
-    # 🔥 LOAD USING SAME role_id
-    dashboard_html = None
+    # 🔥 LOAD DASHBOARD
+    dashboard_html = ""
 
     try:
         res = api_get("/role-dashboard", params={
@@ -793,16 +800,16 @@ def employee_dashboard():
             "company_id": company_id
         })
 
-        print("[API RESPONSE]", res)
+        print("[EMPLOYEE LOAD RAW]", res)
 
         data = _unwrap(res)
         if isinstance(data, dict):
-            dashboard_html = data.get("html")
+            dashboard_html = data.get("html") or ""
 
     except Exception as e:
         print("[DASHBOARD ERROR]", e)
 
-    print("[FINAL HTML]", dashboard_html)
+    print("[FINAL HTML]", dashboard_html[:100] if dashboard_html else "EMPTY")
 
     return render_template(
         "employee_dashboard_multi.html",
@@ -810,7 +817,7 @@ def employee_dashboard():
         tasks=tasks,
         percent=percent,
         allowed_roles=ALLOWED_ROLES,
-        dashboard_html=dashboard_html or "",
+        dashboard_html=dashboard_html
     )
 
 # ─────────────────────────────────────────────

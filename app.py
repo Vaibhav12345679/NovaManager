@@ -452,9 +452,12 @@ def edit_dashboard(role_id):
         return "Unauthorized", 403
 
     role_data = api_get(f"/roles/{role_id}")
-    role_obj = role_data if isinstance(role_data, dict) else {"id": role_id, "name": f"Role {role_id}"}
+    role_obj = role_data if isinstance(role_data, dict) else {
+        "id": role_id,
+        "name": f"Role {role_id}"
+    }
 
-    # ✅ LOAD EXISTING LAYOUT
+    # LOAD layout
     row = db.execute(
         "SELECT layout FROM dashboard_templates WHERE role_id=?",
         (role_id,)
@@ -462,7 +465,7 @@ def edit_dashboard(role_id):
 
     layout = row["layout"] if row else "[]"
 
-    # ✅ SAVE LAYOUT
+    # SAVE layout
     if request.method == "POST":
         layout = request.form.get("layout", "[]")
 
@@ -473,6 +476,7 @@ def edit_dashboard(role_id):
         """, (role_id, layout))
 
         db.commit()
+
         flash("Dashboard saved!", "success")
         return redirect(url_for("edit_dashboard", role_id=role_id))
 
@@ -481,26 +485,6 @@ def edit_dashboard(role_id):
         role=role_obj,
         layout=layout
     )
-
-
- # ---------------- JSON DASHBOARD ----------------
- if request.method == "POST" and "layout_json" in request.form:
-    layout = request.form.get("layout_json")
-
-    try:
-        json.loads(layout)  # validate JSON
-
-        db.execute("""
-            INSERT INTO dashboard_templates (role_id, layout)
-            VALUES (?, ?)
-            ON CONFLICT(role_id) DO UPDATE SET layout=excluded.layout
-        """, (role_id, layout))
-        db.commit()
-
-        flash("Dashboard layout saved", "success")
-
-    except Exception as e:
-        flash(f"Invalid JSON: {e}", "danger")
 
 
 # ─────────────────────────────────────────────

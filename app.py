@@ -323,13 +323,13 @@ def login():
             return redirect(url_for("login"))
 
         try:
-            res  = requests.post(
+            res = requests.post(
                 f"{API_URL}/auth/v1/token",
                 json={"email": email, "password": password},
                 timeout=10,
             )
             data = res.json()
-            print(f"[login] status={res.status_code} response={data}")  # ✅ FIX #7
+            print(f"[login] status={res.status_code} response={data}")
         except Exception as e:
             flash("API error: " + str(e), "danger")
             return redirect(url_for("login"))
@@ -345,9 +345,19 @@ def login():
 
         session.clear()
         session["access_token"] = token
-        print(f"[login] token saved to session")  # ✅ FIX #7
+        print("[login] token saved to session")
 
-        return redirect("/admin")
+        # 🔥 FETCH PROFILE TO DECIDE WHERE TO GO
+        prof = get_profile()
+        role = (prof or {}).get("role")
+
+        print("[login redirect] role =", role)
+
+        # 🔥 ROLE-BASED REDIRECT
+        if role == "company_admin":
+            return redirect(url_for("admin_dashboard"))
+        else:
+            return redirect(url_for("employee_dashboard"))
 
     return render_template("login.html")
 

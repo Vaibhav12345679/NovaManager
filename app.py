@@ -518,7 +518,7 @@ def edit_dashboard(role_id):
     print("[LOAD] role_id =", role_id, "html_len =", len(html_code))
 
     # ✅ SAVE HTML ONLY (remove confusion)
-    if request.method == "POST":
+   if request.method == "POST":
     html_code = request.form.get("html_code", "").strip()
 
     print("[SAVE] role_id =", role_id, "len =", len(html_code))
@@ -531,13 +531,7 @@ def edit_dashboard(role_id):
 
     db.commit()
 
-    # VERIFY
-    test = db.execute(
-        "SELECT html FROM role_dashboards WHERE role_id=?",
-        (str(role_id),)
-    ).fetchone()
-
-    print("[VERIFY]", bool(test))
+    print("[SAVE DONE]")
 
     flash("Dashboard saved!", "success")
     return redirect(url_for("edit_dashboard", role_id=role_id))

@@ -467,18 +467,18 @@ def edit_dashboard(role_id):
 
     # SAVE layout
     if request.method == "POST":
-        layout = request.form.get("layout", "[]")
+    html_code = request.form.get("html_code", "")
 
-        db.execute("""
-            INSERT INTO dashboard_templates (role_id, layout)
-            VALUES (?, ?)
-            ON CONFLICT(role_id) DO UPDATE SET layout=excluded.layout
-        """, (role_id, layout))
+    db.execute("""
+        INSERT INTO role_dashboards (role_id, html)
+        VALUES (?, ?)
+        ON CONFLICT(role_id) DO UPDATE SET html=excluded.html
+    """, (role_id, html_code))
 
-        db.commit()
+    db.commit()
 
-        flash("Dashboard saved!", "success")
-        return redirect(url_for("edit_dashboard", role_id=role_id))
+    flash("Dashboard saved!", "success")
+    return redirect(url_for("edit_dashboard", role_id=role_id))
 
     return render_template(
         "edit_dashboard_json.html",

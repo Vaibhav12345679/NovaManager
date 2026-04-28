@@ -447,73 +447,40 @@ def role_dashboard(role_id):
 def edit_dashboard(role_id):
     prof = get_profile()
     role = (prof or {}).get("role", "")
-    print(f"[edit_dashboard] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1 — allow company_admin AND manager
     if not prof or role not in ALLOWED_ROLES:
         return "Unauthorized", 403
 
     role_data = api_get(f"/roles/{role_id}")
-    if isinstance(role_data, dict):
-        role_obj = (
-            role_data.get("data")
-            if isinstance(role_data.get("data"), dict)
-            else (role_data if role_data.get("id") else {"id": role_id, "name": f"Role {role_id}"})
-        )
-    else:
-        role_obj = {"id": role_id, "name": f"Role {role_id}"}
+    role_obj = role_data if isinstance(role_data, dict) else {"id": role_id, "name": f"Role {role_id}"}
 
-    role_dir = os.path.join("dashboard_codes", str(role_id))
-    os.makedirs(role_dir, exist_ok=True)
-    files = os.listdir(role_dir)
-
-    if request.method == "POST":
-        current_file = request.form.get("current_file") or (files[0] if files else None)
-
-        if "new_file" in request.files:
-            uploaded = request.files["new_file"]
-            if uploaded.filename:
-                fname = secure_filename(uploaded.filename)
-                uploaded.save(os.path.join(role_dir, fname))
-                flash(f"Uploaded {fname}", "success")
-                current_file = fname
-
-        if "file_content" in request.form and current_file:
-            with open(os.path.join(role_dir, current_file), "w", encoding="utf-8") as fh:
-                fh.write(request.form["file_content"])
-            flash(f"Saved {current_file}", "success")
-            return redirect(url_for("edit_dashboard", role_id=role_id, file=current_file))
-    else:
-        current_file = request.args.get("file") or (files[0] if files else None)
-
-    file_content = ""
-    if current_file:
-        fpath = os.path.join(role_dir, current_file)
-        try:
-            raw          = open(fpath, "rb").read()
-            detected     = chardet.detect(raw)
-            file_content = raw.decode(detected.get("encoding") or "utf-8")
-        except Exception as exc:
-            file_content = f"Cannot read file: {exc}"
-    layout_json = "[]"
-
+    # ✅ LOAD EXISTING LAYOUT
     row = db.execute(
-      "SELECT layout FROM dashboard_templates WHERE role_id=?",
-       (role_id,)
-     ).fetchone()
+        "SELECT layout FROM dashboard_templates WHERE role_id=?",
+        (role_id,)
+    ).fetchone()
 
-    if row:
-     layout_json = row["layout"]
-     
+    layout = row["layout"] if row else "[]"
+
+    # ✅ SAVE LAYOUT
+    if request.method == "POST":
+        layout = request.form.get("layout", "[]")
+
+        db.execute("""
+            INSERT INTO dashboard_templates (role_id, layout)
+            VALUES (?, ?)
+            ON CONFLICT(role_id) DO UPDATE SET layout=excluded.layout
+        """, (role_id, layout))
+
+        db.commit()
+        flash("Dashboard saved!", "success")
+        return redirect(url_for("edit_dashboard", role_id=role_id))
+
     return render_template(
-        "edit_dashboard_multi.html",
+        "edit_dashboard_json.html",
         role=role_obj,
-        files=files,
-        current_file=current_file,
-        file_content=file_content,
-        layout_json=layout_json
+        layout=layout
     )
-
 
 
  # ---------------- JSON DASHBOARD ----------------

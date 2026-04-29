@@ -972,40 +972,6 @@ def manager_create_employee():
     return redirect(url_for("admin_dashboard"))
 
 
-@app.route("/employee/upload_task_file/<task_id>", methods=["POST"])
-@login_required
-def upload_task_file(task_id):
-    file = request.files.get("file")
-
-    if not file:
-        flash("No file selected", "danger")
-        return redirect("/employee")
-
-    # 🔥 SEND FILE TO API
-    files = {
-        "file": (file.filename, file.stream, file.mimetype)
-    }
-
-    data = {
-        "task_id": task_id
-    }
-
-    response = requests.post(
-        f"{API_URL}/upload-task-file",
-        files=files,
-        data=data,
-        headers=_auth_headers()
-    )
-
-    res = response.json()
-    print("[UPLOAD RESPONSE]", res)
-
-    if "file_url" in res:
-        flash("File uploaded!", "success")
-    else:
-        flash("Upload failed", "danger")
-
-    return redirect("/employee")
 
 # ─────────────────────────────────────────────
 # 16. Appeal
@@ -1080,7 +1046,9 @@ def marketing_create_task():
 
     return redirect(url_for("role_dashboard", role_id=2))
 
- #TASKS UPLOAD FOR EMPLOYEES
+#TASKS UPLOAD FOR EMPLOYEES
+import requests
+
 @app.route("/employee/upload_task_file/<task_id>", methods=["POST"])
 @login_required
 def upload_task_file(task_id):
@@ -1090,17 +1058,30 @@ def upload_task_file(task_id):
         flash("No file selected", "danger")
         return redirect("/employee")
 
-    # 🔥 For now just simulate upload
-    file_url = f"/uploads/{file.filename}"
+    # 🔥 SEND FILE TO API
+    files = {
+        "file": (file.filename, file.stream, file.mimetype)
+    }
 
-    # 🔥 Send to API (update task)
-    api_post("/tasks/update", body={
-        "task_id": task_id,
-        "completed_file": file_url,
-        "status": "Completed"
-    })
+    data = {
+        "task_id": task_id
+    }
 
-    flash("File uploaded successfully", "success")
+    response = requests.post(
+        f"{API_URL}/upload-task-file",
+        files=files,
+        data=data,
+        headers=_auth_headers()
+    )
+
+    res = response.json()
+    print("[UPLOAD RESPONSE]", res)
+
+    if "file_url" in res:
+        flash("File uploaded!", "success")
+    else:
+        flash("Upload failed", "danger")
+
     return redirect("/employee")
 
 # ─────────────────────────────────────────────

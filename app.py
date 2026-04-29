@@ -972,53 +972,40 @@ def manager_create_employee():
     return redirect(url_for("admin_dashboard"))
 
 
-@app.route("/manager/upload_task_file/<task_id>", methods=["POST"])
+@app.route("/employee/upload_task_file/<task_id>", methods=["POST"])
 @login_required
-def manager_upload_task_file(task_id):
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[manager_upload_task_file] role={role} task_id={task_id}")  # ✅ FIX #7
+def upload_task_file(task_id):
+    file = request.files.get("file")
 
-    # ✅ FIX #1 — allow both company_admin and manager
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+    if not file:
+        flash("No file selected", "danger")
+        return redirect("/employee")
 
-    task_raw = api_get(f"/tasks/{task_id}")
-    task     = task_raw
-    if isinstance(task_raw, dict):
-        task = task_raw.get("data") or (task_raw if task_raw.get("id") else None)
+    # 🔥 SEND FILE TO API
+    files = {
+        "file": (file.filename, file.stream, file.mimetype)
+    }
 
-    if not task or not isinstance(task, dict):
-        flash("Task not found.", "danger")
-        return redirect(url_for("admin_dashboard"))
+    data = {
+        "task_id": task_id
+    }
 
-    if str(task.get("company_id", "")) != str(prof.get("company_id", "")):
-        flash("You cannot modify tasks from another company.", "danger")
-        return redirect(url_for("admin_dashboard"))
+    response = requests.post(
+        f"{API_URL}/upload-task-file",
+        files=files,
+        data=data,
+        headers=_auth_headers()
+    )
 
-    task_file = request.files.get("task_file")
-    if not task_file or not task_file.filename:
-        flash("Please choose a file to upload.", "danger")
-        return redirect(url_for("admin_dashboard"))
+    res = response.json()
+    print("[UPLOAD RESPONSE]", res)
 
-    fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-    file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-    task_file.save(file_path)
-    file_url  = f"/static/task_files/{fname}"
-
-    status, data = api_put(f"/tasks/{task_id}", {
-        "file_url": file_url,
-        "status":   "Completed",
-    })
-
-    if status in (200, 201, 204):
-        flash("Task file uploaded.", "success")
+    if "file_url" in res:
+        flash("File uploaded!", "success")
     else:
-        error = data.get("message") or data.get("error") or "Update failed."
-        flash(f"Failed to update task file: {error}", "danger")
+        flash("Upload failed", "danger")
 
-    return redirect(url_for("admin_dashboard"))
-
+    return redirect("/employee")
 
 # ─────────────────────────────────────────────
 # 16. Appeal

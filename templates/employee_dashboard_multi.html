@@ -15,16 +15,41 @@
 <!-- 🔥 TASKS SECTION -->
 <h3>Your Tasks</h3>
 
-{% if tasks and tasks|length > 0 %}
-    <ul>
-        {% for t in tasks %}
-            <li>
-                <strong>{{ t.title }}</strong> - {{ t.status }}
-            </li>
-        {% endfor %}
-    </ul>
+{% if tasks %}
+  <div style="display:flex; flex-direction:column; gap:15px;">
+
+    {% for t in tasks %}
+      <div style="border:1px solid #ccc; padding:15px; border-radius:10px;">
+
+        <h4>{{ t.title }}</h4>
+
+        <p><strong>Status:</strong> {{ t.status }}</p>
+
+        <p><strong>Description:</strong><br>
+          {{ t.description or "No description" }}
+        </p>
+
+        <p><strong>Deadline:</strong> {{ t.deadline or "Not set" }}</p>
+
+        {% if t.file_url %}
+          <p>
+            <strong>Attachment:</strong>
+            <a href="{{ t.file_url }}" target="_blank">View File</a>
+          </p>
+        {% endif %}
+
+        <!-- 🔥 Upload Completed Work -->
+        <form action="/employee/upload_task_file/{{ t.id }}" method="POST" enctype="multipart/form-data">
+          <input type="file" name="file" required>
+          <button type="submit">Upload Completed Work</button>
+        </form>
+
+      </div>
+    {% endfor %}
+
+  </div>
 {% else %}
-    <p>No tasks assigned</p>
+  <p>No tasks assigned</p>
 {% endif %}
 
 {% endblock %}

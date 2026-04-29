@@ -782,37 +782,31 @@ def employee_dashboard():
 
     user_id = prof.get("id")
     company_id = str(prof.get("company_id"))
-
-    # 🔥 IMPORTANT: MUST MATCH WHAT ADMIN USED
-    role_id = str(prof.get("role_id") or "2")   # change fallback if needed
+    role_id = str(prof.get("role_id"))   # 🔥 MUST use role_id
 
     print("[EMPLOYEE PARAMS]", role_id, company_id)
 
+    # Fetch tasks
     tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id})) or []
 
     total = len(tasks)
     completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total else 0
 
-    # 🔥 LOAD DASHBOARD
-    dashboard_html = ""
+    # 🔥 FETCH DASHBOARD
+    res = api_get("/role-dashboard", params={
+        "role": role_id,
+        "company_id": company_id
+    })
 
-    try:
-        res = api_get("/role-dashboard", params={
-            "role": role_id,
-            "company_id": company_id
-        })
+    print("[EMPLOYEE LOAD RAW]", res)
 
-        print("[EMPLOYEE LOAD RAW]", res)
+    data = _unwrap(res)
+    print("[UNWRAPPED]", data)
 
-        data = _unwrap(res)
-        if isinstance(data, dict):
-            dashboard_html = data.get("html") or ""
+    dashboard_html = data.get("html", "")
 
-    except Exception as e:
-        print("[DASHBOARD ERROR]", e)
-
-    print("[FINAL HTML]", dashboard_html[:100] if dashboard_html else "EMPTY")
+    print("[FINAL HTML]", dashboard_html)
 
     return render_template(
         "employee_dashboard_multi.html",
@@ -820,8 +814,9 @@ def employee_dashboard():
         tasks=tasks,
         percent=percent,
         allowed_roles=ALLOWED_ROLES,
-        dashboard_html=dashboard_html
+        dashboard_html=dashboard_html,
     )
+
 
 # ─────────────────────────────────────────────
 # 15. Manager Routes (Admin + Manager)

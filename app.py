@@ -794,11 +794,11 @@ def employee_dashboard():
 
     user_id = prof.get("id")
     company_id = str(prof.get("company_id"))
-    role_id = str(prof.get("role_id"))   # 🔥 MUST use role_id
+    role_id = str(prof.get("role_id"))  # ✅ correct
 
     print("[EMPLOYEE PARAMS]", role_id, company_id)
 
-    # Fetch tasks
+    # ✅ Tasks (list → use _unwrap)
     tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id})) or []
 
     total = len(tasks)
@@ -813,8 +813,15 @@ def employee_dashboard():
 
     print("[EMPLOYEE LOAD RAW]", res)
 
-    data = _unwrap(res)
-    print("[UNWRAPPED]", data)
+    # 🔥 FIX: HANDLE DICT RESPONSE PROPERLY
+    if isinstance(res, tuple):
+        status, raw = res
+    else:
+        raw = res
+
+    data = raw.get("data", {}) if isinstance(raw, dict) else {}
+
+    print("[UNWRAPPED DATA]", data)
 
     dashboard_html = data.get("html", "")
 
@@ -828,6 +835,7 @@ def employee_dashboard():
         allowed_roles=ALLOWED_ROLES,
         dashboard_html=dashboard_html,
     )
+    
 
 
 # ─────────────────────────────────────────────

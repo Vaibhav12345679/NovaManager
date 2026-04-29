@@ -456,14 +456,33 @@ def admin_dashboard():
     # ✅ FIX #3 — pass employees (role=employee) separately for task assignment dropdown
     employees = [u for u in users if u.get("role") == "employee"]
 
+    # SOMAEDGEX PART
+    row = db.execute(
+      "SELECT api_key, modules FROM integrations WHERE company_id=?",(company_id,)).fetchone()
+    import json soma_data = {}
+
+    if row:
+     api_key = row["api_key"]
+     modules = json.loads(row["modules"] or "[]")
+
+    if "hosting" in modules:
+        soma_data["hosting"] = soma_get("hosting", api_key)
+
+    if "dns" in modules:
+        soma_data["dns"] = soma_get("dns", api_key)
+
+    if "cms" in modules:
+        soma_data["cms"] = soma_get("cms", api_key)
+
     return render_template(
         "admin_dashboard.html",
         profile=prof,
         users=users,
         tasks=tasks,
         roles=roles,
-        employees=employees,           # ✅ FIX #3 — for task assignment dropdown
-        allowed_roles=ALLOWED_ROLES,   # ✅ FIX #6 — pass to template for conditional UI
+        employees=employees,# ✅ FIX #3 — for task assignment dropdown
+        allowed_roles=ALLOWED_ROLES,# ✅ FIX #6 — pass to template for conditional UI
+        soma_data=soma_data
     )
 
 

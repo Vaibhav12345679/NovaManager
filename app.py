@@ -804,7 +804,7 @@ def employee_dashboard():
     print("[EMPLOYEE PARAMS]", role_id, company_id)
 
     # 🔥 FIXED TASK FETCH — api_get returns dict|None, never a tuple
-    res_tasks = api_get("/tasks", params={"assigned_to": user_id})
+    res_tasks = api_get("/tasks", params={"assigned_to": user_id,"company_id": company_id})
 
     print("[TASKS RAW]", res_tasks)
 

@@ -459,7 +459,7 @@ def admin_dashboard():
     # SOMAEDGEX PART
     row = db.execute(
       "SELECT api_key, modules FROM integrations WHERE company_id=?",(company_id,)).fetchone()
-    import json soma_data = {}
+    soma_data = {}
 
     if row:
      api_key = row["api_key"]

@@ -251,6 +251,17 @@ def get_role_dashboard(role, company_id):
     print("[UNWRAPPED HTML]", html_val)
 
     return html_val
+
+def soma_get(endpoint, api_key):
+    try:
+        r = requests.get(
+            f"https://api.somaedgex-cloud.online/{endpoint}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=5
+        )
+        return r.json()
+    except:
+        return {}
 # ─────────────────────────────────────────────
 # 4. Routes
 # ─────────────────────────────────────────────

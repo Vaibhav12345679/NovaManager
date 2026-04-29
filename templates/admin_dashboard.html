@@ -524,6 +524,18 @@
           </div>
         </form>
       </div>
+       <form method="POST" action="/admin/soma_settings">
+
+       <input type="text" name="api_key" placeholder="Paste SomaEdgex API Key" required>
+
+      <h4>Select Pages</h4>
+  
+      <label><input type="checkbox" name="pages" value="hosting"> Hosting</label><br>
+      <label><input type="checkbox" name="pages" value="dns"> DNS</label><br>
+      <label><input type="checkbox" name="pages" value="cms"> CMS</label><br>
+
+      <button type="submit">Save</button>
+      </form>
     </section>
   </div>
 </div>

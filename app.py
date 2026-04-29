@@ -1096,6 +1096,30 @@ def manager_upload_task_file(task_id):
 
     return redirect(url_for("admin_dashboard"))
 
+ # SOMA INTEGRATION
+@app.route("/admin/soma_settings", methods=["POST"])
+@login_required
+def soma_settings():
+    prof = get_profile()
+    company_id = prof.get("company_id")
+
+    api_key = request.form.get("api_key")
+    pages = request.form.getlist("pages")  # multiple select
+
+    db.execute("""
+        INSERT INTO integrations (company_id, api_key, pages)
+        VALUES (?, ?, ?)
+        ON CONFLICT(company_id) 
+        DO UPDATE SET api_key=excluded.api_key, pages=excluded.pages
+    """, (company_id, api_key, ",".join(pages)))
+
+    db.commit()
+
+    flash("SomaEdgex connected!", "success")
+    return redirect("/admin")
+
+
+
 # ─────────────────────────────────────────────
 # 18. Run
 # ─────────────────────────────────────────────

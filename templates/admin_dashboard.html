@@ -536,6 +536,22 @@
 
       <button type="submit">Save</button>
       </form>
+      <h2>SomaEdgex Panel</h2>
+
+      {% if soma_data.hosting %}
+        <h3>Hosting</h3>
+        <pre>{{ soma_data.hosting }}</pre>
+      {% endif %}
+
+      {% if soma_data.dns %}
+        <h3>DNS</h3>
+        <pre>{{ soma_data.dns }}</pre>
+      {% endif %}
+
+      {% if soma_data.cms %}
+        <h3>CMS</h3>
+        <pre>{{ soma_data.cms }}</pre>
+      {% endif %}
     </section>
   </div>
 </div>

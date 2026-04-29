@@ -176,6 +176,18 @@ def _unwrap(raw) -> list:
                 return val
     return []
 
+def _unwrap_dict(res):
+    # res = (status, data)
+    if isinstance(res, tuple):
+        status, data = res
+    else:
+        data = res
+
+    if not isinstance(data, dict):
+        return {}
+
+    return data.get("data", {})
+
 
 # ─────────────────────────────────────────────
 # 3. Auth helpers

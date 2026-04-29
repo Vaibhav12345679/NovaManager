@@ -95,20 +95,23 @@ def _safe_json(resp) -> dict:
 
 
 def api_get(path: str, params: dict = None):
-    """GET -> parsed JSON, or None on any failure."""
     try:
+        print(f"[api_get] PATH={path} PARAMS={params}")  # debug
+
         resp = requests.get(
             f"{API_URL}{path}",
+            params=params,   # 🔥 THIS LINE FIXES EVERYTHING
             headers=_auth_headers(),
-            params=params,
             timeout=10,
         )
-        print(f"[api_get] {path} params={params} -> {resp.status_code}")  # ✅ FIX #7 — log params too
-        if resp.status_code in (200, 201):
-            return _safe_json(resp)
-    except Exception as exc:
-        print(f"[api_get] ERROR {path}: {exc}")
-    return None
+
+        print(f"[api_get] URL CALLED: {resp.url}")  # 🔥 VERY IMPORTANT
+
+        return resp.status_code, resp.json()
+
+    except Exception as e:
+        print("API GET ERROR:", e)
+        return 0, {}
 
 
 def api_post(path: str, body: dict = None):

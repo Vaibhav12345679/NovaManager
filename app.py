@@ -95,23 +95,20 @@ def _safe_json(resp) -> dict:
 
 
 def api_get(path: str, params: dict = None):
+    """GET -> parsed JSON, or None on any failure."""
     try:
-        print(f"[api_get] PATH={path} PARAMS={params}")  # debug
-
         resp = requests.get(
             f"{API_URL}{path}",
-            params=params,   # 🔥 THIS LINE FIXES EVERYTHING
             headers=_auth_headers(),
+            params=params,
             timeout=10,
         )
-
-        print(f"[api_get] URL CALLED: {resp.url}")  # 🔥 VERY IMPORTANT
-
-        return resp.status_code, resp.json()
-
-    except Exception as e:
-        print("API GET ERROR:", e)
-        return 0, {}
+        print(f"[api_get] {path} params={params} -> {resp.status_code}")  # ✅ FIX #7 — log params too
+        if resp.status_code in (200, 201):
+            return _safe_json(resp)
+    except Exception as exc:
+        print(f"[api_get] ERROR {path}: {exc}")
+    return None
 
 
 def api_post(path: str, body: dict = None):
@@ -163,30 +160,43 @@ def api_delete(path: str):
         return 0, {"error": str(exc)}
 
 
-def _unwrap(raw) -> list:
-    """Normalise API list responses regardless of envelope wrapping."""
+def _unwrap(raw):
+    """Normalise API responses regardless of envelope wrapping.
+
+    Handles three shapes returned by the Node API:
+      • {"data": [...]}          → list   (list endpoints: /tasks, /profiles …)
+      • {"profiles": [...]}      → list   (alternate list envelopes)
+      • {"data": {"html": …}}    → dict   (single-row endpoints: /role-dashboard)
+      • plain list / plain dict  → returned as-is
+
+    Always returns [] for None / unrecognised shapes so callers that iterate
+    never crash, while callers that do .get("html") get the inner dict.
+    """
     if raw is None:
         return []
+
+    # Already a bare list — nothing to unwrap
     if isinstance(raw, list):
         return raw
+
     if isinstance(raw, dict):
+        # ── List envelopes ──────────────────────────────────────────────────
         for key in ("data", "profiles", "tasks", "roles", "results"):
             val = raw.get(key)
             if isinstance(val, list):
-                return val
+                return val          # ✅ list response (most endpoints)
+
+        # ── Single-object envelope: {"data": {...}} ─────────────────────────
+        # e.g. /role-dashboard returns {"data": {"html": "...", "role": "2"}}
+        data_val = raw.get("data")
+        if isinstance(data_val, dict):
+            return data_val         # ✅ unwrap inner dict
+
+        # ── Bare dict (no known envelope key) ──────────────────────────────
+        # Return the dict itself so callers can still do .get("html") etc.
+        return raw
+
     return []
-
-def _unwrap_dict(res):
-    # res = (status, data)
-    if isinstance(res, tuple):
-        status, data = res
-    else:
-        data = res
-
-    if not isinstance(data, dict):
-        return {}
-
-    return data.get("data", {})
 
 
 # ─────────────────────────────────────────────
@@ -792,51 +802,39 @@ def employee_dashboard():
     if not prof:
         return redirect(url_for("login"))
 
-    user_id = str(prof.get("id"))
+    user_id = prof.get("id")
     company_id = str(prof.get("company_id"))
-    role_id = str(prof.get("role_id"))
+
+    # 🔥 IMPORTANT: MUST MATCH WHAT ADMIN USED
+    role_id = str(prof.get("role_id") or "2")   # change fallback if needed
 
     print("[EMPLOYEE PARAMS]", role_id, company_id)
 
-    # 🔥 FIXED TASK FETCH (NO _unwrap)
-    res_tasks = api_get("/tasks", params={"assigned_to": user_id})
-
-    print("[TASKS RAW]", res_tasks)
-
-    tasks = []
-
-    if isinstance(res_tasks, tuple):
-        status, raw = res_tasks
-
-        if isinstance(raw, dict):
-            # handle different API formats safely
-            tasks = raw.get("data") or raw.get("tasks") or []
-
-    print("[TASKS FINAL]", tasks)
+    tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id})) or []
 
     total = len(tasks)
-    completed = sum(
-        1 for t in tasks if (t.get("status") or "").lower() == "completed"
-    )
+    completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
     percent = int((completed / total) * 100) if total else 0
 
-    # 🔥 DASHBOARD FETCH (ALREADY CORRECT)
-    res = api_get("/role-dashboard", params={
-        "role": role_id,
-        "company_id": company_id
-    })
-
-    print("[DASHBOARD RAW]", res)
-
+    # 🔥 LOAD DASHBOARD
     dashboard_html = ""
 
-    if isinstance(res, tuple):
-        status, raw = res
+    try:
+        res = api_get("/role-dashboard", params={
+            "role": role_id,
+            "company_id": company_id
+        })
 
-        if isinstance(raw, dict):
-            dashboard_html = raw.get("data", {}).get("html", "")
+        print("[EMPLOYEE LOAD RAW]", res)
 
-    print("[FINAL HTML]", dashboard_html)
+        data = _unwrap(res)
+        if isinstance(data, dict):
+            dashboard_html = data.get("html") or ""
+
+    except Exception as e:
+        print("[DASHBOARD ERROR]", e)
+
+    print("[FINAL HTML]", dashboard_html[:100] if dashboard_html else "EMPTY")
 
     return render_template(
         "employee_dashboard_multi.html",
@@ -844,10 +842,8 @@ def employee_dashboard():
         tasks=tasks,
         percent=percent,
         allowed_roles=ALLOWED_ROLES,
-        dashboard_html=dashboard_html,
+        dashboard_html=dashboard_html
     )
-    
-
 
 # ─────────────────────────────────────────────
 # 15. Manager Routes (Admin + Manager)

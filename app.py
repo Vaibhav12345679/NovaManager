@@ -531,7 +531,7 @@ def edit_dashboard(role_id):
     print("[LOAD RAW]", res)
 
     data = _unwrap(res)
-    html_code = (data.get("html") if isinstance(data, dict) else "") ot "
+    html_code = (data.get("html") if isinstance(data, dict) else "") or "
 
     print("[LOAD HTML LEN]", len(html_code or "))
 

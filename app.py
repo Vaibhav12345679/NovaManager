@@ -410,81 +410,74 @@ def admin_dashboard():
     print(f"[admin_dashboard] profile={prof}")
 
     if not prof:
-        return f"""
-        ❌ PROFILE NOT FOUND<br>
-        Session: {dict(session)}<br>
-        👉 Try: /debug/profile/{session.get('access_token')}
-        """, 500
+        return "❌ PROFILE NOT FOUND", 500
 
     role = prof.get("role", "unknown")
-    print(f"[admin_dashboard] role={role}")  # ✅ FIX #7
-
-    # ✅ FIX #1 — warn but do NOT block — allow both roles to see dashboard
-    if role not in ALLOWED_ROLES:
-        print(f"⚠️ WARNING: role '{role}' is not in ALLOWED_ROLES — showing dashboard anyway")
-
     company_id = prof.get("company_id")
-    print(f"[admin_dashboard] company_id={company_id}")  # ✅ FIX #7
 
-    # ✅ FIX #5 — Fetch REAL data (no dummy data)
-    # Try /profiles first; fallback to /employees if empty or broken
+    print(f"[admin_dashboard] role={role}, company_id={company_id}")
+
+    # ---------------- USERS ----------------
     try:
         users = _unwrap(api_get("/profiles", params={"company_id": company_id})) or []
-        print(f"[admin_dashboard] users from /profiles: {len(users)}")
         if not users:
-            print(f"[admin_dashboard] /profiles returned empty — falling back to /employees")
             users = _unwrap(api_get("/employees", params={"company_id": company_id})) or []
-            print(f"[admin_dashboard] users from /employees fallback: {len(users)}")
     except Exception as e:
-        print(f"[admin_dashboard] USERS ERROR: {e}")
+        print("[USERS ERROR]", e)
         users = []
 
+    # ---------------- TASKS ----------------
     try:
-        tasks = _unwrap(api_get("/tasks", params={"company_id": company_id}))
-        print(f"[admin_dashboard] tasks fetched: {len(tasks)}")
+        tasks = _unwrap(api_get("/tasks", params={"company_id": company_id})) or []
     except Exception as e:
-        print(f"[admin_dashboard] TASKS ERROR: {e}")
+        print("[TASKS ERROR]", e)
         tasks = []
 
+    # ---------------- ROLES ----------------
     try:
-        roles = _unwrap(api_get("/roles", params={"company_id": company_id}))
-        print(f"[admin_dashboard] roles fetched: {len(roles)}")
+        roles = _unwrap(api_get("/roles", params={"company_id": company_id})) or []
     except Exception as e:
-        print(f"[admin_dashboard] ROLES ERROR: {e}")
+        print("[ROLES ERROR]", e)
         roles = []
 
-    # ✅ FIX #3 — pass employees (role=employee) separately for task assignment dropdown
     employees = [u for u in users if u.get("role") == "employee"]
 
-    # SOMAEDGEX PART
-    row = db.execute(
-      "SELECT api_key, modules FROM integrations WHERE company_id=?",(company_id,)).fetchone()
+    # ---------------- SOMAEDGEX ----------------
     soma_data = {}
 
-    if row:
-     api_key = row["api_key"]
-     modules = json.loads(row["modules"] or "[]")
+    try:
+        row = db.execute(
+            "SELECT api_key, modules FROM integrations WHERE company_id=?",
+            (company_id,)
+        ).fetchone()
 
-    if "hosting" in modules:
-        soma_data["hosting"] = soma_get("hosting", api_key)
+        if row:
+            api_key = row["api_key"]
+            modules = (row["modules"] or "").split(",")
 
-    if "dns" in modules:
-        soma_data["dns"] = soma_get("dns", api_key)
+            if "hosting" in modules:
+                soma_data["hosting"] = soma_get("/hosting", api_key)
 
-    if "cms" in modules:
-        soma_data["cms"] = soma_get("cms", api_key)
+            if "dns" in modules:
+                soma_data["dns"] = soma_get("/dns", api_key)
 
+            if "cms" in modules:
+                soma_data["cms"] = soma_get("/cms", api_key)
+
+    except Exception as e:
+        print("[SOMA ERROR]", e)
+
+    # ---------------- RENDER ----------------
     return render_template(
         "admin_dashboard.html",
         profile=prof,
         users=users,
         tasks=tasks,
         roles=roles,
-        employees=employees,# ✅ FIX #3 — for task assignment dropdown
-        allowed_roles=ALLOWED_ROLES,# ✅ FIX #6 — pass to template for conditional UI
+        employees=employees,
+        allowed_roles=ALLOWED_ROLES,
         soma_data=soma_data
     )
-
 
 # ─────────────────────────────────────────────
 # 6. Role Dashboard

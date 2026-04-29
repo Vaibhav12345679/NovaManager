@@ -533,7 +533,7 @@ def edit_dashboard(role_id):
     data = _unwrap(res)
     html_code = (data.get("html") if isinstance(data, dict) else "") ot "
 
-    print("[LOAD HTML LEN]", len(html_code))
+    print("[LOAD HTML LEN]", len(html_code or "))
 
     # 🔥 SAVE (same keys as LOAD)
     if request.method == "POST":

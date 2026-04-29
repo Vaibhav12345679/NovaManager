@@ -792,38 +792,49 @@ def employee_dashboard():
     if not prof:
         return redirect(url_for("login"))
 
-    user_id = prof.get("id")
+    user_id = str(prof.get("id"))
     company_id = str(prof.get("company_id"))
-    role_id = str(prof.get("role_id"))  # ✅ correct
+    role_id = str(prof.get("role_id"))
 
     print("[EMPLOYEE PARAMS]", role_id, company_id)
 
-    # ✅ Tasks (list → use _unwrap)
-    tasks = _unwrap(api_get("/tasks", params={"assigned_to": user_id})) or []
+    # 🔥 FIXED TASK FETCH (NO _unwrap)
+    res_tasks = api_get("/tasks", params={"assigned_to": user_id})
+
+    print("[TASKS RAW]", res_tasks)
+
+    tasks = []
+
+    if isinstance(res_tasks, tuple):
+        status, raw = res_tasks
+
+        if isinstance(raw, dict):
+            # handle different API formats safely
+            tasks = raw.get("data") or raw.get("tasks") or []
+
+    print("[TASKS FINAL]", tasks)
 
     total = len(tasks)
-    completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
+    completed = sum(
+        1 for t in tasks if (t.get("status") or "").lower() == "completed"
+    )
     percent = int((completed / total) * 100) if total else 0
 
-    # 🔥 FETCH DASHBOARD
+    # 🔥 DASHBOARD FETCH (ALREADY CORRECT)
     res = api_get("/role-dashboard", params={
         "role": role_id,
         "company_id": company_id
     })
 
-    print("[EMPLOYEE LOAD RAW]", res)
+    print("[DASHBOARD RAW]", res)
 
-    # 🔥 FIX: HANDLE DICT RESPONSE PROPERLY
+    dashboard_html = ""
+
     if isinstance(res, tuple):
         status, raw = res
-    else:
-        raw = res
 
-    data = raw.get("data", {}) if isinstance(raw, dict) else {}
-
-    print("[UNWRAPPED DATA]", data)
-
-    dashboard_html = data.get("html", "")
+        if isinstance(raw, dict):
+            dashboard_html = raw.get("data", {}).get("html", "")
 
     print("[FINAL HTML]", dashboard_html)
 

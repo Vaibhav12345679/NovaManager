@@ -241,14 +241,16 @@ def get_role_dashboard(role, company_id):
 
     print("[API RAW]", res)
 
-    data = _unwrap(res)
+    # Direct dict access — _unwrap only handles list shapes
+    html_val = None
+    if isinstance(res, dict):
+        inner = res.get("data", {})
+        if isinstance(inner, dict):
+            html_val = inner.get("html")
 
-    print("[UNWRAPPED]", data)
+    print("[UNWRAPPED HTML]", html_val)
 
-    if isinstance(data, dict):
-        return data.get("html")
-
-    return None
+    return html_val
 # ─────────────────────────────────────────────
 # 4. Routes
 # ─────────────────────────────────────────────
@@ -544,8 +546,12 @@ def edit_dashboard(role_id):
     print("[LOAD PARAMS]", role_id, company_id)
     print("[LOAD RAW]", res)
 
-    data = _unwrap(res)
-    html_code = data.get("html") if isinstance(data, dict) else ""
+    # Direct dict access — _unwrap only handles list shapes; /role-dashboard returns {"data": {...}}
+    html_code = ""
+    if isinstance(res, dict):
+        inner = res.get("data", {})
+        if isinstance(inner, dict):
+            html_code = inner.get("html", "") or ""
 
     print("[LOAD HTML LEN]", len(html_code))
 
@@ -797,19 +803,20 @@ def employee_dashboard():
 
     print("[EMPLOYEE PARAMS]", role_id, company_id)
 
-    # 🔥 FIXED TASK FETCH (NO _unwrap)
+    # 🔥 FIXED TASK FETCH — api_get returns dict|None, never a tuple
     res_tasks = api_get("/tasks", params={"assigned_to": user_id})
 
     print("[TASKS RAW]", res_tasks)
 
     tasks = []
 
-    if isinstance(res_tasks, tuple):
-        status, raw = res_tasks
-
-        if isinstance(raw, dict):
-            # handle different API formats safely
-            tasks = raw.get("data") or raw.get("tasks") or []
+    if isinstance(res_tasks, dict):
+        # handles {"data": [...]} or {"tasks": [...]} or plain list at top level
+        tasks = res_tasks.get("data") or res_tasks.get("tasks") or []
+        if not isinstance(tasks, list):
+            tasks = []
+    elif isinstance(res_tasks, list):
+        tasks = res_tasks
 
     print("[TASKS FINAL]", tasks)
 
@@ -819,7 +826,7 @@ def employee_dashboard():
     )
     percent = int((completed / total) * 100) if total else 0
 
-    # 🔥 DASHBOARD FETCH (ALREADY CORRECT)
+    # 🔥 DASHBOARD FETCH — api_get returns dict|None, never a tuple
     res = api_get("/role-dashboard", params={
         "role": role_id,
         "company_id": company_id
@@ -829,13 +836,14 @@ def employee_dashboard():
 
     dashboard_html = ""
 
-    if isinstance(res, tuple):
-        status, raw = res
+    if isinstance(res, dict):
+        inner = res.get("data", {})
+        if isinstance(inner, dict):
+            dashboard_html = inner.get("html", "") or ""
+        elif isinstance(inner, str):
+            dashboard_html = inner
 
-        if isinstance(raw, dict):
-            dashboard_html = raw.get("data", {}).get("html", "")
-
-    print("[FINAL HTML]", dashboard_html)
+    print("[FINAL HTML]", dashboard_html[:120] if dashboard_html else "EMPTY")
 
     return render_template(
         "employee_dashboard_multi.html",

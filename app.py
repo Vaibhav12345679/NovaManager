@@ -160,43 +160,32 @@ def api_delete(path: str):
         return 0, {"error": str(exc)}
 
 
-def _unwrap(raw):
-    """Normalise API responses regardless of envelope wrapping.
-
-    Handles three shapes returned by the Node API:
-      • {"data": [...]}          → list   (list endpoints: /tasks, /profiles …)
-      • {"profiles": [...]}      → list   (alternate list envelopes)
-      • {"data": {"html": …}}    → dict   (single-row endpoints: /role-dashboard)
-      • plain list / plain dict  → returned as-is
-
-    Always returns [] for None / unrecognised shapes so callers that iterate
-    never crash, while callers that do .get("html") get the inner dict.
-    """
+def _unwrap(raw) -> list:
+    """Normalise API list responses regardless of envelope wrapping."""
     if raw is None:
         return []
-
-    # Already a bare list — nothing to unwrap
     if isinstance(raw, list):
         return raw
-
     if isinstance(raw, dict):
-        # ── List envelopes ──────────────────────────────────────────────────
         for key in ("data", "profiles", "tasks", "roles", "results"):
             val = raw.get(key)
             if isinstance(val, list):
-                return val          # ✅ list response (most endpoints)
-
-        # ── Single-object envelope: {"data": {...}} ─────────────────────────
-        # e.g. /role-dashboard returns {"data": {"html": "...", "role": "2"}}
-        data_val = raw.get("data")
-        if isinstance(data_val, dict):
-            return data_val         # ✅ unwrap inner dict
-
-        # ── Bare dict (no known envelope key) ──────────────────────────────
-        # Return the dict itself so callers can still do .get("html") etc.
-        return raw
-
+                return val
     return []
+
+def _unwrap_dict(res):
+    # res = (status, data)
+    if isinstance(res, tuple):
+        status, data = res
+    else:
+        data = res
+
+    if not isinstance(data, dict):
+        return {}
+
+    return data.get("data", {})
+
+
 
 
 # ─────────────────────────────────────────────

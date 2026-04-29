@@ -1093,6 +1093,28 @@ def marketing_create_task():
 
     return redirect(url_for("role_dashboard", role_id=2))
 
+ #TASKS UPLOAD FOR EMPLOYEES
+@app.route("/employee/upload_task_file/<task_id>", methods=["POST"])
+@login_required
+def upload_task_file(task_id):
+    file = request.files.get("file")
+
+    if not file:
+        flash("No file selected", "danger")
+        return redirect("/employee")
+
+    # 🔥 For now just simulate upload
+    file_url = f"/uploads/{file.filename}"
+
+    # 🔥 Send to API (update task)
+    api_post("/tasks/update", body={
+        "task_id": task_id,
+        "completed_file": file_url,
+        "status": "Completed"
+    })
+
+    flash("File uploaded successfully", "success")
+    return redirect("/employee")
 
 # ─────────────────────────────────────────────
 # 18. Run

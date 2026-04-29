@@ -160,18 +160,18 @@ def api_delete(path: str):
         return 0, {"error": str(exc)}
 
 
-def _unwrap(res):
-    # If api_get returns (status, data)
-    if isinstance(res, tuple):
-        res = res[1]
-
-    # If API returned {"data": {...}}
-    if isinstance(res, dict):
-        if "data" in res:
-            return res["data"] or {}
-        return res
-
-    return {}
+def _unwrap(raw) -> list:
+    """Normalise API list responses regardless of envelope wrapping."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        for key in ("data", "profiles", "tasks", "roles", "results"):
+            val = raw.get(key)
+            if isinstance(val, list):
+                return val
+    return []
 
 
 # ─────────────────────────────────────────────
@@ -531,9 +531,9 @@ def edit_dashboard(role_id):
     print("[LOAD RAW]", res)
 
     data = _unwrap(res)
-    html_code = (data.get("html") if isinstance(data, dict) else "") or ""
+    html_code = data.get("html") if isinstance(data, dict) else ""
 
-    print("[LOAD HTML LEN]", len(html_code or ""))
+    print("[LOAD HTML LEN]", len(html_code))
 
     # 🔥 SAVE (same keys as LOAD)
     if request.method == "POST":
@@ -810,9 +810,7 @@ def employee_dashboard():
         print("[DASHBOARD ERROR]", e)
 
     print("[FINAL HTML]", dashboard_html[:100] if dashboard_html else "EMPTY")
-    print("RAW RESPONSE =", res)
-    data = _unwrap(res)
-    print("UNWRAPPED =", data)
+
     return render_template(
         "employee_dashboard_multi.html",
         profile=prof,

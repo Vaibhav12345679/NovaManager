@@ -580,11 +580,16 @@ def edit_dashboard(role_id):
 
     # 🔥 SAVE (same keys as LOAD)
     if request.method == "POST":
-        html_code = request.form.get("html_code", "").strip()
+    html_code = request.form.get("html_code", "")
 
-        print("[SAVE PARAMS]", role_id, company_id)
-        print("[SAVE HTML LEN]", len(html_code))
+    print("[SAVE PARAMS]", role_id, company_id)
+    print("[SAVE HTML LEN]", len(html_code))
 
+    if not html_code.strip():
+        flash("Save failed: dashboard HTML is empty.", "error")
+        return redirect(url_for("edit_dashboard", role_id=role_id))
+
+    try:
         status, resp = api_post("/role-dashboard", body={
             "role": role_id,
             "company_id": company_id,
@@ -593,9 +598,17 @@ def edit_dashboard(role_id):
 
         print("[SAVE RESPONSE]", status, resp)
 
-        flash("Dashboard saved!", "success")
-        return redirect(url_for("edit_dashboard", role_id=role_id))
+        if not (200 <= int(status) < 300):
+            flash(f"Dashboard save failed: API returned {status}.", "error")
+            return redirect(url_for("edit_dashboard", role_id=role_id))
 
+        flash("Dashboard saved successfully.", "success")
+
+    except Exception as e:
+        print("[SAVE ERROR]", repr(e))
+        flash("Dashboard save failed. Check the server logs.", "error")
+
+    return redirect(url_for("edit_dashboard", role_id=role_id))
     return render_template(
         "edit_dashboard.html",
         role={"id": role_id, "name": f"Role {role_id}"},

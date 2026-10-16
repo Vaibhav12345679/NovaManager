@@ -603,10 +603,10 @@ def edit_dashboard(role_id):
         role={"id": role_id, "name": f"Role {role_id}"},
         html_code=html_code
     )
-status, resp = api_post("/role-dashboard", body={
-    "role": role_id,
-    "company_id": company_id,
-    "html": html_code
+    status, resp = api_post("/role-dashboard", body={
+        "role": role_id,
+        "company_id": company_id,
+        "html": html_code
 })
 # ─────────────────────────────────────────────
 # 8. Create Role (Admin + Manager)

@@ -482,7 +482,6 @@ def admin_dashboard():
 # ─────────────────────────────────────────────
 # 6. Role Dashboard
 # ─────────────────────────────────────────────
-
 @app.route("/role/<role_id>")
 @login_required
 def role_dashboard(role_id):

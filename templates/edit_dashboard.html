@@ -20,20 +20,37 @@
    <script>
 const form = document.querySelector('form');
 const codeField = document.getElementById('code_editor');
-const editor = ace.edit('editor');
+const editorContainer = document.getElementById('editor');
 
-editor.setTheme('ace/theme/monokai');
-editor.session.setMode('ace/mode/html');
-editor.setValue(codeField.value || '', -1);
+if (!form || !codeField || !editorContainer) {
+    console.error('Dashboard editor elements were not found.');
+} else if (typeof CodeMirror === 'undefined') {
+    console.error('CodeMirror failed to load. Check the script paths.');
+    alert('Editor failed to load. Please refresh the page.');
+} else {
+    const editor = CodeMirror(editorContainer, {
+        value: codeField.value || '',
+        mode: 'htmlmixed',
+        theme: 'monokai',
+        lineNumbers: true,
+        indentUnit: 2,
+        tabSize: 2,
+        indentWithTabs: false,
+        matchBrackets: true,
+        lineWrapping: false
+    });
 
-form.addEventListener('submit', function (event) {
-    codeField.value = editor.getValue();
+    editor.setSize('100%', '600px');
 
-    if (!codeField.value.trim()) {
-        event.preventDefault();
-        alert('Cannot save an empty dashboard.');
-    }
-});
+    form.addEventListener('submit', function (event) {
+        codeField.value = editor.getValue();
+
+        if (!codeField.value.trim()) {
+            event.preventDefault();
+            alert('Cannot save an empty dashboard.');
+        }
+    });
+}
 </script>
 
 {% endblock %}

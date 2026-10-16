@@ -18,18 +18,24 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.1/ace.js"></script>
 
 <script>
-    // Create editor
-    var editor = ace.edit("editor");
-    editor.setTheme("ace/theme/monokai");
-    editor.session.setMode("ace/mode/html");
+   <script>
+const form = document.querySelector('form');
+const codeField = document.getElementById('code_editor');
+const editor = ace.edit('editor');
 
-    // Load existing code from backend
-    editor.setValue(document.getElementById("code_editor").value || "", -1);
+editor.setTheme('ace/theme/monokai');
+editor.session.setMode('ace/mode/html');
+editor.setValue(codeField.value || '', -1);
 
-    // On submit → copy editor content into textarea
-    document.querySelector("form").addEventListener("submit", function () {
-        document.getElementById("code_editor").value = editor.getValue();
-    });
+form.addEventListener('submit', function (event) {
+    codeField.value = editor.getValue();
+
+    if (!codeField.value.trim()) {
+        event.preventDefault();
+        alert('Cannot save an empty dashboard.');
+    }
+});
+</script>
 </script>
 
 {% endblock %}

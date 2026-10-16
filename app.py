@@ -580,10 +580,10 @@ def edit_dashboard(role_id):
 
     # 🔥 SAVE (same keys as LOAD)
     if request.method == "POST":
-        html_code = request.form.get("html_code", "")
+    html_code = request.form.get("html_code", "")
 
-        print("[SAVE PARAMS]", role_id, company_id)
-        print("[SAVE HTML LEN]", len(html_code))
+    print("[SAVE] Role:", role_id, "Company:", company_id)
+    print("[SAVE] HTML length:", len(html_code))
 
     if not html_code.strip():
         flash("Save failed: dashboard HTML is empty.", "error")
@@ -596,17 +596,26 @@ def edit_dashboard(role_id):
             "html": html_code
         })
 
-        print("[SAVE RESPONSE]", status, resp)
+        print("[SAVE] API status:", status)
+        print("[SAVE] API response:", resp)
 
         if not (200 <= int(status) < 300):
-            flash(f"Dashboard save failed: API returned {status}.", "error")
+            flash(f"Save failed: API returned status {status}.", "error")
             return redirect(url_for("edit_dashboard", role_id=role_id))
 
-        flash("Dashboard saved successfully.", "success")
+        # Verify the stored value by reading it back.
+        saved_html = get_role_dashboard(role_id, company_id)
+
+        if saved_html != html_code:
+            print("[SAVE] Verification failed. Reloaded length:",
+                  len(saved_html or ""))
+            flash("Save verification failed: stored HTML does not match.", "error")
+        else:
+            flash("Dashboard saved and verified successfully.", "success")
 
     except Exception as e:
         print("[SAVE ERROR]", repr(e))
-        flash("Dashboard save failed. Check the server logs.", "error")
+        flash("Dashboard save failed. Check Render logs.", "error")
 
     return redirect(url_for("edit_dashboard", role_id=role_id))
     return render_template(

@@ -15,42 +15,55 @@
 </form>
 
 <!-- Ace Editor CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.1/ace.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 
-   <script>
-const form = document.querySelector('form');
-const codeField = document.getElementById('code_editor');
-const editorContainer = document.getElementById('editor');
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.querySelector('form');
+    const codeField = document.getElementById('code_editor');
+    const editorContainer = document.getElementById('editor');
 
-if (!form || !codeField || !editorContainer) {
-    console.error('Dashboard editor elements were not found.');
-} else if (typeof CodeMirror === 'undefined') {
-    console.error('CodeMirror failed to load. Check the script paths.');
-    alert('Editor failed to load. Please refresh the page.');
-} else {
-    const editor = CodeMirror(editorContainer, {
-        value: codeField.value || '',
-        mode: 'htmlmixed',
-        theme: 'monokai',
-        lineNumbers: true,
-        indentUnit: 2,
-        tabSize: 2,
-        indentWithTabs: false,
-        matchBrackets: true,
-        lineWrapping: false
-    });
+    if (!form || !codeField || !editorContainer) {
+        console.error('Missing form, code_editor, or editor element.');
+        alert('Editor setup error: required HTML elements are missing.');
+        return;
+    }
 
-    editor.setSize('100%', '600px');
+    if (typeof CodeMirror === 'undefined') {
+        console.error('CodeMirror library was not loaded.');
+        alert('CodeMirror failed to load. Check the script paths.');
+        return;
+    }
 
-    form.addEventListener('submit', function (event) {
-        codeField.value = editor.getValue();
+    try {
+        const editor = CodeMirror(editorContainer, {
+            value: codeField.value || '',
+            mode: 'htmlmixed',
+            theme: 'monokai',
+            lineNumbers: true,
+            indentUnit: 2,
+            tabSize: 2,
+            matchBrackets: true,
+            lineWrapping: false
+        });
 
-        if (!codeField.value.trim()) {
-            event.preventDefault();
-            alert('Cannot save an empty dashboard.');
-        }
-    });
-}
+        editor.setSize('100%', '600px');
+
+        form.addEventListener('submit', function (event) {
+            codeField.value = editor.getValue();
+
+            if (!codeField.value.trim()) {
+                event.preventDefault();
+                alert('Cannot save an empty dashboard.');
+            }
+        });
+
+        console.log('CodeMirror initialized successfully.');
+    } catch (error) {
+        console.error('Editor initialization failed:', error);
+        alert('Editor initialization failed. Check the browser console.');
+    }
+});
 </script>
 
 {% endblock %}

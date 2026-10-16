@@ -593,14 +593,21 @@ def edit_dashboard(role_id):
 
         print("[SAVE RESPONSE]", status, resp)
 
-        flash("Dashboard saved!", "success")
-        return redirect(url_for("edit_dashboard", role_id=role_id))
+        if 200 <= status < 300:
+            flash("Save request accepted. Verify by reloading.", "success")
+        else:
+            flash(f"Save failed: {resp}", "error")
 
     return render_template(
         "edit_dashboard.html",
         role={"id": role_id, "name": f"Role {role_id}"},
         html_code=html_code
     )
+status, resp = api_post("/role-dashboard", body={
+    "role": role_id,
+    "company_id": company_id,
+    "html": html_code
+})
 # ─────────────────────────────────────────────
 # 8. Create Role (Admin + Manager)
 # ─────────────────────────────────────────────

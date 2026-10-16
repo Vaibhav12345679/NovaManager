@@ -27,9 +27,9 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
 app.config.update(
-    SESSION_COOKIE_SECURE   = True,
-    SESSION_COOKIE_HTTPONLY = True,
-    SESSION_COOKIE_SAMESITE = "None",
+SESSION_COOKIE_SECURE   = True,
+SESSION_COOKIE_HTTPONLY = True,
+SESSION_COOKIE_SAMESITE = "None",
 )
 
 
@@ -44,7 +44,7 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
 def allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 # ─────────────────────────────────────────────
@@ -55,19 +55,19 @@ db = sqlite3.connect(DB_PATH, check_same_thread=False)
 db.row_factory = sqlite3.Row
 
 db.execute("""
-    CREATE TABLE IF NOT EXISTS dashboard_templates (
-        id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        role_id TEXT UNIQUE,
-        layout  TEXT
-    )
+   CREATE TABLE IF NOT EXISTS dashboard_templates (
+       id      INTEGER PRIMARY KEY AUTOINCREMENT,
+       role_id TEXT UNIQUE,
+       layout  TEXT
+   )
 """)
 
 db.execute("""
-    CREATE TABLE IF NOT EXISTS role_dashboards (
-        id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        role_id TEXT UNIQUE,
-        html    TEXT
-    )
+   CREATE TABLE IF NOT EXISTS role_dashboards (
+       id      INTEGER PRIMARY KEY AUTOINCREMENT,
+       role_id TEXT UNIQUE,
+       html    TEXT
+   )
 """)
 
 db.commit()
@@ -78,112 +78,112 @@ db.commit()
 # ─────────────────────────────────────────────
 
 def _auth_headers() -> dict:
-    """Build Authorization header from session token."""
-    token = session.get("access_token", "")
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type":  "application/json",
-    }
+"""Build Authorization header from session token."""
+token = session.get("access_token", "")
+return {
+"Authorization": f"Bearer {token}",
+"Content-Type":  "application/json",
+}
 
 
 def _safe_json(resp) -> dict:
-    """Parse JSON safely; return {} on failure."""
-    try:
-        return resp.json()
-    except Exception:
-        return {}
+"""Parse JSON safely; return {} on failure."""
+try:
+return resp.json()
+except Exception:
+return {}
 
 
 def api_get(path: str, params: dict = None):
-    """GET -> parsed JSON, or None on any failure."""
-    try:
-        resp = requests.get(
-            f"{API_URL}{path}",
-            headers=_auth_headers(),
-            params=params,
-            timeout=10,
-        )
-        print(f"[api_get] {path} params={params} -> {resp.status_code}")  # ✅ FIX #7 — log params too
-        if resp.status_code in (200, 201):
-            return _safe_json(resp)
-    except Exception as exc:
-        print(f"[api_get] ERROR {path}: {exc}")
-    return None
+"""GET -> parsed JSON, or None on any failure."""
+try:
+resp = requests.get(
+f"{API_URL}{path}",
+headers=_auth_headers(),
+params=params,
+timeout=10,
+)
+print(f"[api_get] {path} params={params} -> {resp.status_code}")  # ✅ FIX #7 — log params too
+if resp.status_code in (200, 201):
+return _safe_json(resp)
+except Exception as exc:
+print(f"[api_get] ERROR {path}: {exc}")
+return None
 
 
 def api_post(path: str, body: dict = None):
-    """POST -> (status_code, json_data)."""
-    try:
-        print(f"[api_post] {path} body={body}")  # ✅ FIX #7 — log request body
-        resp = requests.post(
-            f"{API_URL}{path}",
-            json=body or {},
-            headers=_auth_headers(),
-            timeout=10,
-        )
-        print(f"[api_post] {path} -> {resp.status_code} | response={_safe_json(resp)}")  # ✅ FIX #7
-        return resp.status_code, _safe_json(resp)
-    except Exception as exc:
-        print(f"[api_post] ERROR {path}: {exc}")
-        return 0, {"error": str(exc)}
+"""POST -> (status_code, json_data)."""
+try:
+print(f"[api_post] {path} body={body}")  # ✅ FIX #7 — log request body
+resp = requests.post(
+f"{API_URL}{path}",
+json=body or {},
+headers=_auth_headers(),
+timeout=10,
+)
+print(f"[api_post] {path} -> {resp.status_code} | response={_safe_json(resp)}")  # ✅ FIX #7
+return resp.status_code, _safe_json(resp)
+except Exception as exc:
+print(f"[api_post] ERROR {path}: {exc}")
+return 0, {"error": str(exc)}
 
 
 def api_put(path: str, body: dict = None):
-    """PUT -> (status_code, json_data)."""
-    try:
-        print(f"[api_put] {path} body={body}")  # ✅ FIX #7
-        resp = requests.put(
-            f"{API_URL}{path}",
-            json=body or {},
-            headers=_auth_headers(),
-            timeout=10,
-        )
-        print(f"[api_put] {path} -> {resp.status_code} | response={_safe_json(resp)}")
-        return resp.status_code, _safe_json(resp)
-    except Exception as exc:
-        print(f"[api_put] ERROR {path}: {exc}")
-        return 0, {"error": str(exc)}
+"""PUT -> (status_code, json_data)."""
+try:
+print(f"[api_put] {path} body={body}")  # ✅ FIX #7
+resp = requests.put(
+f"{API_URL}{path}",
+json=body or {},
+headers=_auth_headers(),
+timeout=10,
+)
+print(f"[api_put] {path} -> {resp.status_code} | response={_safe_json(resp)}")
+return resp.status_code, _safe_json(resp)
+except Exception as exc:
+print(f"[api_put] ERROR {path}: {exc}")
+return 0, {"error": str(exc)}
 
 
 def api_delete(path: str):
-    """DELETE -> (status_code, json_data)."""
-    try:
-        resp = requests.delete(
-            f"{API_URL}{path}",
-            headers=_auth_headers(),
-            timeout=10,
-        )
-        print(f"[api_delete] {path} -> {resp.status_code}")
-        return resp.status_code, _safe_json(resp)
-    except Exception as exc:
-        print(f"[api_delete] ERROR {path}: {exc}")
-        return 0, {"error": str(exc)}
+"""DELETE -> (status_code, json_data)."""
+try:
+resp = requests.delete(
+f"{API_URL}{path}",
+headers=_auth_headers(),
+timeout=10,
+)
+print(f"[api_delete] {path} -> {resp.status_code}")
+return resp.status_code, _safe_json(resp)
+except Exception as exc:
+print(f"[api_delete] ERROR {path}: {exc}")
+return 0, {"error": str(exc)}
 
 
 def _unwrap(raw) -> list:
-    """Normalise API list responses regardless of envelope wrapping."""
-    if raw is None:
-        return []
-    if isinstance(raw, list):
-        return raw
-    if isinstance(raw, dict):
-        for key in ("data", "profiles", "tasks", "roles", "results"):
-            val = raw.get(key)
-            if isinstance(val, list):
-                return val
-    return []
+"""Normalise API list responses regardless of envelope wrapping."""
+if raw is None:
+return []
+if isinstance(raw, list):
+return raw
+if isinstance(raw, dict):
+for key in ("data", "profiles", "tasks", "roles", "results"):
+val = raw.get(key)
+if isinstance(val, list):
+return val
+return []
 
 def _unwrap_dict(res):
-    # res = (status, data)
-    if isinstance(res, tuple):
-        status, data = res
-    else:
-        data = res
+# res = (status, data)
+if isinstance(res, tuple):
+status, data = res
+else:
+data = res
 
-    if not isinstance(data, dict):
-        return {}
+if not isinstance(data, dict):
+return {}
 
-    return data.get("data", {})
+return data.get("data", {})
 
 
 
@@ -193,37 +193,37 @@ def _unwrap_dict(res):
 # ─────────────────────────────────────────────
 
 def login_required(f):
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        if "access_token" not in session:
-            print("[login_required] no token in session -> redirect login")
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return wrapped
+@wraps(f)
+def wrapped(*args, **kwargs):
+if "access_token" not in session:
+print("[login_required] no token in session -> redirect login")
+return redirect(url_for("login"))
+return f(*args, **kwargs)
+return wrapped
 
 
 def get_current_user():
-    token = session.get("access_token")
-    if not token:
-        return None
-    return {"id": token}
+token = session.get("access_token")
+if not token:
+return None
+return {"id": token}
 
 
 def get_profile():
-    token = session.get("access_token")
-    if not token:
-        return None
-    try:
-        res  = requests.get(f"{API_URL}/debug/profile/{token}", timeout=10)
-        data = res.json()
-        print(f"[get_profile] token={token} -> status={res.status_code} data={data}")  # ✅ FIX #7
-        prof = data.get("profile")
-        if prof:
-            print(f"[get_profile] role={prof.get('role')} company_id={prof.get('company_id')}")  # ✅ FIX #7
-        return prof
-    except Exception as e:
-        print(f"[get_profile] ERROR: {e}")
-        return None
+token = session.get("access_token")
+if not token:
+return None
+try:
+res  = requests.get(f"{API_URL}/debug/profile/{token}", timeout=10)
+data = res.json()
+print(f"[get_profile] token={token} -> status={res.status_code} data={data}")  # ✅ FIX #7
+prof = data.get("profile")
+if prof:
+print(f"[get_profile] role={prof.get('role')} company_id={prof.get('company_id')}")  # ✅ FIX #7
+return prof
+except Exception as e:
+print(f"[get_profile] ERROR: {e}")
+return None
 
 
 # ─────────────────────────────────────────────
@@ -231,170 +231,170 @@ def get_profile():
 # ─────────────────────────────────────────────
 
 def get_role_dashboard(role, company_id):
-    role = str(role).strip()
-    company_id = str(company_id).strip()
+role = str(role).strip()
+company_id = str(company_id).strip()
 
-    res = api_get("/role-dashboard", params={
-        "role": role,
-        "company_id": company_id
-    })
+res = api_get("/role-dashboard", params={
+"role": role,
+"company_id": company_id
+})
 
-    print("[API RAW]", res)
+print("[API RAW]", res)
 
-    # Direct dict access — _unwrap only handles list shapes
-    html_val = None
-    if isinstance(res, dict):
-        inner = res.get("data", {})
-        if isinstance(inner, dict):
-            html_val = inner.get("html")
+# Direct dict access — _unwrap only handles list shapes
+html_val = None
+if isinstance(res, dict):
+inner = res.get("data", {})
+if isinstance(inner, dict):
+html_val = inner.get("html")
 
-    print("[UNWRAPPED HTML]", html_val)
+print("[UNWRAPPED HTML]", html_val)
 
-    return html_val
+return html_val
 
 def soma_get(endpoint, api_key):
-    try:
-        r = requests.get(
-            f"https://api.somaedgex-cloud.online/{endpoint}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=5
-        )
-        return r.json()
-    except:
-        return {}
+try:
+r = requests.get(
+f"https://api.somaedgex-cloud.online/{endpoint}",
+headers={"Authorization": f"Bearer {api_key}"},
+timeout=5
+)
+return r.json()
+except:
+return {}
 # ─────────────────────────────────────────────
 # 4. Routes
 # ─────────────────────────────────────────────
 
 @app.route("/")
 def index():
-    print(f"[index] session={dict(session)}")
-    if "access_token" not in session:
-        return render_template("index.html")
+print(f"[index] session={dict(session)}")
+if "access_token" not in session:
+return render_template("index.html")
 
-    prof = get_profile()
-    print(f"[index] profile={prof}")
+prof = get_profile()
+print(f"[index] profile={prof}")
 
-    if not prof:
-        return redirect(url_for("admin_dashboard"))
+if not prof:
+return redirect(url_for("admin_dashboard"))
 
-    role = prof.get("role", "")
-    print(f"[index] role={role}")  # ✅ FIX #7
+role = prof.get("role", "")
+print(f"[index] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1 — redirect both company_admin AND manager to admin dashboard
-    if role in ALLOWED_ROLES:
-        return redirect(url_for("admin_dashboard"))
-    if prof.get("role_id"):
-        return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
-    return redirect(url_for("employee_dashboard"))
+# ✅ FIX #1 — redirect both company_admin AND manager to admin dashboard
+if role in ALLOWED_ROLES:
+return redirect(url_for("admin_dashboard"))
+if prof.get("role_id"):
+return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
+return redirect(url_for("employee_dashboard"))
 
 
 @app.route("/debug/db")
 def debug_db():
-    rows = db.execute("SELECT * FROM role_dashboards").fetchall()
-    return {"data": [dict(r) for r in rows]}
-    
+rows = db.execute("SELECT * FROM role_dashboards").fetchall()
+return {"data": [dict(r) for r in rows]}
+
 # ─── Register ───
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == "POST":
-        company_name = request.form.get("company_name", "").strip()
-        admin_name   = request.form.get("admin_name",   "").strip()
-        email        = request.form.get("email",        "").strip()
-        password     = request.form.get("password",     "")
+if request.method == "POST":
+company_name = request.form.get("company_name", "").strip()
+admin_name   = request.form.get("admin_name",   "").strip()
+email        = request.form.get("email",        "").strip()
+password     = request.form.get("password",     "")
 
-        if not (company_name and admin_name and email and password):
-            flash("All fields are required.", "danger")
-            return redirect(url_for("register"))
+if not (company_name and admin_name and email and password):
+flash("All fields are required.", "danger")
+return redirect(url_for("register"))
 
-        status, data = api_post("/auth/v1/signup", {
-            "email":        email,
-            "password":     password,
-            "company_name": company_name,
-            "admin_name":   admin_name,
-        })
+status, data = api_post("/auth/v1/signup", {
+"email":        email,
+"password":     password,
+"company_name": company_name,
+"admin_name":   admin_name,
+})
 
-        print(f"[register] signup status={status} data={data}")
+print(f"[register] signup status={status} data={data}")
 
-        if status in (200, 201):
-            flash("Registered successfully. Please log in.", "success")
-            return redirect(url_for("login"))
+if status in (200, 201):
+flash("Registered successfully. Please log in.", "success")
+return redirect(url_for("login"))
 
-        error_msg = (
-            data.get("message")
-            or data.get("error_description")
-            or data.get("error")
-            or "Registration failed. Please try again."
-        )
-        if "already" in str(error_msg).lower() or "exists" in str(error_msg).lower():
-            flash("An account with this email already exists. Please log in.", "warning")
-            return redirect(url_for("login"))
+error_msg = (
+data.get("message")
+or data.get("error_description")
+or data.get("error")
+or "Registration failed. Please try again."
+)
+if "already" in str(error_msg).lower() or "exists" in str(error_msg).lower():
+flash("An account with this email already exists. Please log in.", "warning")
+return redirect(url_for("login"))
 
-        flash(f"Sign up error: {error_msg}", "danger")
-        return redirect(url_for("register"))
+flash(f"Sign up error: {error_msg}", "danger")
+return redirect(url_for("register"))
 
-    return render_template("register.html")
+return render_template("register.html")
 
 
 # ─── Login ───
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == "POST":
-        email    = request.form.get("email")
-        password = request.form.get("password")
+if request.method == "POST":
+email    = request.form.get("email")
+password = request.form.get("password")
 
-        if not email or not password:
-            flash("Email and password required", "danger")
-            return redirect(url_for("login"))
+if not email or not password:
+flash("Email and password required", "danger")
+return redirect(url_for("login"))
 
-        try:
-            res = requests.post(
-                f"{API_URL}/auth/v1/token",
-                json={"email": email, "password": password},
-                timeout=10,
-            )
-            data = res.json()
-            print(f"[login] status={res.status_code} response={data}")
-        except Exception as e:
-            flash("API error: " + str(e), "danger")
-            return redirect(url_for("login"))
+try:
+res = requests.post(
+f"{API_URL}/auth/v1/token",
+json={"email": email, "password": password},
+timeout=10,
+)
+data = res.json()
+print(f"[login] status={res.status_code} response={data}")
+except Exception as e:
+flash("API error: " + str(e), "danger")
+return redirect(url_for("login"))
 
-        if "error" in data:
-            flash(data["error"], "danger")
-            return redirect(url_for("login"))
+if "error" in data:
+flash(data["error"], "danger")
+return redirect(url_for("login"))
 
-        token = data.get("access_token")
-        if not token:
-            flash("Login failed (no token)", "danger")
-            return redirect(url_for("login"))
+token = data.get("access_token")
+if not token:
+flash("Login failed (no token)", "danger")
+return redirect(url_for("login"))
 
-        session.clear()
-        session["access_token"] = token
-        print("[login] token saved to session")
+session.clear()
+session["access_token"] = token
+print("[login] token saved to session")
 
-        # 🔥 FETCH PROFILE TO DECIDE WHERE TO GO
-        prof = get_profile()
-        role = (prof or {}).get("role")
+# 🔥 FETCH PROFILE TO DECIDE WHERE TO GO
+prof = get_profile()
+role = (prof or {}).get("role")
 
-        print("[login redirect] role =", role)
+print("[login redirect] role =", role)
 
-        # 🔥 ROLE-BASED REDIRECT
-        if role == "company_admin":
-            return redirect(url_for("admin_dashboard"))
-        else:
-            return redirect(url_for("employee_dashboard"))
+# 🔥 ROLE-BASED REDIRECT
+if role == "company_admin":
+return redirect(url_for("admin_dashboard"))
+else:
+return redirect(url_for("employee_dashboard"))
 
-    return render_template("login.html")
+return render_template("login.html")
 
 
 # ─── Logout ───
 
 @app.route("/logout")
 def logout():
-    session.clear()
-    return redirect(url_for("login"))
+session.clear()
+return redirect(url_for("login"))
 
 
 # ─────────────────────────────────────────────
@@ -404,47 +404,78 @@ def logout():
 @app.route("/admin")
 @login_required
 def admin_dashboard():
-    print(f"[admin_dashboard] session={dict(session)}")
+print(f"[admin_dashboard] session={dict(session)}")
 
-    prof = get_profile()
-    print(f"[admin_dashboard] profile={prof}")
+prof = get_profile()
+print(f"[admin_dashboard] profile={prof}")
 
-    if not prof:
+if not prof:
+        return f"""
+        ❌ PROFILE NOT FOUND<br>
+        Session: {dict(session)}<br>
+        👉 Try: /debug/profile/{session.get('access_token')}
+        """, 500
         return "❌ PROFILE NOT FOUND", 500
 
-    role = prof.get("role", "unknown")
-    company_id = prof.get("company_id")
+role = prof.get("role", "unknown")
+    print(f"[admin_dashboard] role={role}")  # ✅ FIX #7
 
+    # ✅ FIX #1 — warn but do NOT block — allow both roles to see dashboard
+    if role not in ALLOWED_ROLES:
+        print(f"⚠️ WARNING: role '{role}' is not in ALLOWED_ROLES — showing dashboard anyway")
+
+company_id = prof.get("company_id")
+    print(f"[admin_dashboard] company_id={company_id}")  # ✅ FIX #7
+
+    # ✅ FIX #5 — Fetch REAL data (no dummy data)
+    # Try /profiles first; fallback to /employees if empty or broken
     print(f"[admin_dashboard] role={role}, company_id={company_id}")
 
     # ---------------- USERS ----------------
-    try:
-        users = _unwrap(api_get("/profiles", params={"company_id": company_id})) or []
-        if not users:
-            users = _unwrap(api_get("/employees", params={"company_id": company_id})) or []
-    except Exception as e:
+try:
+users = _unwrap(api_get("/profiles", params={"company_id": company_id})) or []
+        print(f"[admin_dashboard] users from /profiles: {len(users)}")
+if not users:
+            print(f"[admin_dashboard] /profiles returned empty — falling back to /employees")
+users = _unwrap(api_get("/employees", params={"company_id": company_id})) or []
+            print(f"[admin_dashboard] users from /employees fallback: {len(users)}")
+except Exception as e:
+        print(f"[admin_dashboard] USERS ERROR: {e}")
         print("[USERS ERROR]", e)
-        users = []
+users = []
 
     # ---------------- TASKS ----------------
-    try:
+try:
+        tasks = _unwrap(api_get("/tasks", params={"company_id": company_id}))
+        print(f"[admin_dashboard] tasks fetched: {len(tasks)}")
         tasks = _unwrap(api_get("/tasks", params={"company_id": company_id})) or []
-    except Exception as e:
+except Exception as e:
+        print(f"[admin_dashboard] TASKS ERROR: {e}")
         print("[TASKS ERROR]", e)
-        tasks = []
+tasks = []
 
     # ---------------- ROLES ----------------
-    try:
+try:
+        roles = _unwrap(api_get("/roles", params={"company_id": company_id}))
+        print(f"[admin_dashboard] roles fetched: {len(roles)}")
         roles = _unwrap(api_get("/roles", params={"company_id": company_id})) or []
-    except Exception as e:
+except Exception as e:
+        print(f"[admin_dashboard] ROLES ERROR: {e}")
         print("[ROLES ERROR]", e)
-        roles = []
+roles = []
 
-    employees = [u for u in users if u.get("role") == "employee"]
+    # ✅ FIX #3 — pass employees (role=employee) separately for task assignment dropdown
+employees = [u for u in users if u.get("role") == "employee"]
 
+    # SOMAEDGEX PART
+    row = db.execute(
+      "SELECT api_key, modules FROM integrations WHERE company_id=?",(company_id,)).fetchone()
     # ---------------- SOMAEDGEX ----------------
-    soma_data = {}
+soma_data = {}
 
+    if row:
+     api_key = row["api_key"]
+     modules = json.loads(row["modules"] or "[]")
     try:
         row = db.execute(
             "SELECT api_key, modules FROM integrations WHERE company_id=?",
@@ -455,12 +486,18 @@ def admin_dashboard():
             api_key = row["api_key"]
             modules = (row["modules"] or "").split(",")
 
+    if "hosting" in modules:
+        soma_data["hosting"] = soma_get("hosting", api_key)
             if "hosting" in modules:
                 soma_data["hosting"] = soma_get("/hosting", api_key)
 
+    if "dns" in modules:
+        soma_data["dns"] = soma_get("dns", api_key)
             if "dns" in modules:
                 soma_data["dns"] = soma_get("/dns", api_key)
 
+    if "cms" in modules:
+        soma_data["cms"] = soma_get("cms", api_key)
             if "cms" in modules:
                 soma_data["cms"] = soma_get("/cms", api_key)
 
@@ -468,79 +505,83 @@ def admin_dashboard():
         print("[SOMA ERROR]", e)
 
     # ---------------- RENDER ----------------
-    return render_template(
-        "admin_dashboard.html",
-        profile=prof,
-        users=users,
-        tasks=tasks,
-        roles=roles,
+return render_template(
+"admin_dashboard.html",
+profile=prof,
+users=users,
+tasks=tasks,
+roles=roles,
+        employees=employees,# ✅ FIX #3 — for task assignment dropdown
+        allowed_roles=ALLOWED_ROLES,# ✅ FIX #6 — pass to template for conditional UI
         employees=employees,
         allowed_roles=ALLOWED_ROLES,
-        soma_data=soma_data
-    )
+soma_data=soma_data
+)
+
 
 # ─────────────────────────────────────────────
 # 6. Role Dashboard
 # ─────────────────────────────────────────────
+
 @app.route("/role/<role_id>")
 @login_required
 def role_dashboard(role_id):
-    prof = get_profile()
-    if not prof:
-        return redirect(url_for("login"))
+prof = get_profile()
+if not prof:
+return redirect(url_for("login"))
 
-    role = prof.get("role", "")
-    print(f"[role_dashboard] role={role} role_id={role_id}")  # ✅ FIX #7
+role = prof.get("role", "")
+print(f"[role_dashboard] role={role} role_id={role_id}")  # ✅ FIX #7
 
-    # ✅ FIX #1 — both admin and manager redirect to admin dashboard
-    if role in ALLOWED_ROLES:
-        return redirect(url_for("admin_dashboard"))
+# ✅ FIX #1 — both admin and manager redirect to admin dashboard
+if role in ALLOWED_ROLES:
+return redirect(url_for("admin_dashboard"))
 
-    if str(prof.get("role_id", "")) != str(role_id):
-        if prof.get("role_id"):
-            return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
-        return redirect(url_for("employee_dashboard"))
+if str(prof.get("role_id", "")) != str(role_id):
+if prof.get("role_id"):
+return redirect(url_for("role_dashboard", role_id=prof["role_id"]))
+return redirect(url_for("employee_dashboard"))
 
-    company_id = prof.get("company_id") or ""
-    users = _unwrap(api_get("/profiles", params={"company_id": company_id}))
-    tasks = _unwrap(api_get("/tasks",    params={"company_id": company_id}))
-    roles = _unwrap(api_get("/roles",    params={"company_id": company_id}))
+company_id = prof.get("company_id") or ""
+users = _unwrap(api_get("/profiles", params={"company_id": company_id}))
+tasks = _unwrap(api_get("/tasks",    params={"company_id": company_id}))
+roles = _unwrap(api_get("/roles",    params={"company_id": company_id}))
 
-    # ✅ FIX #3 — employees for task assignment dropdown
-    employees = [u for u in users if u.get("role") == "employee"]
+# ✅ FIX #3 — employees for task assignment dropdown
+employees = [u for u in users if u.get("role") == "employee"]
 
-    # Load optional Python dashboard renderer
-    html     = None
-    role_dir = os.path.join("dashboard_codes", str(role_id))
-    if os.path.isdir(role_dir):
-        py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
-        if py_files:
-            module_path = os.path.join(role_dir, py_files[0])
-            try:
-                spec = importlib.util.spec_from_file_location(f"dashboard_{role_id}", module_path)
-                mod  = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                if hasattr(mod, "render_dashboard"):
-                    html = mod.render_dashboard(prof, users, tasks, roles)
-            except Exception as exc:
-                flash(f"Dashboard render error: {exc}", "danger")
+# Load optional Python dashboard renderer
+html     = None
+role_dir = os.path.join("dashboard_codes", str(role_id))
+if os.path.isdir(role_dir):
+py_files = [f for f in os.listdir(role_dir) if f.endswith(".py")]
+if py_files:
+module_path = os.path.join(role_dir, py_files[0])
+try:
+spec = importlib.util.spec_from_file_location(f"dashboard_{role_id}", module_path)
+mod  = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+if hasattr(mod, "render_dashboard"):
+html = mod.render_dashboard(prof, users, tasks, roles)
+except Exception as exc:
+flash(f"Dashboard render error: {exc}", "danger")
 
-    if html is None:
-        uid        = str(prof.get("id", ""))
-        user_tasks = [t for t in tasks if str(t.get("assigned_to", "")) == uid]
-        total      = len(user_tasks)
-        completed  = sum(1 for t in user_tasks if (t.get("status") or "").lower() == "completed")
-        percent    = int((completed / total) * 100) if total else 0
-        return render_template(
-            "employee_dashboard.html",
-            profile=prof,
-            tasks=user_tasks,
-            percent=percent,
-            employees=employees,
-            allowed_roles=ALLOWED_ROLES,
-        )
+if html is None:
+uid        = str(prof.get("id", ""))
+user_tasks = [t for t in tasks if str(t.get("assigned_to", "")) == uid]
+total      = len(user_tasks)
+completed  = sum(1 for t in user_tasks if (t.get("status") or "").lower() == "completed")
+percent    = int((completed / total) * 100) if total else 0
+return render_template(
+"employee_dashboard.html",
+profile=prof,
+tasks=user_tasks,
+percent=percent,
+employees=employees,
+allowed_roles=ALLOWED_ROLES,
+)
 
-    return html
+return html
 
 
 # ─────────────────────────────────────────────
@@ -549,78 +590,57 @@ def role_dashboard(role_id):
 @app.route("/admin/edit_dashboard/<role_id>", methods=["GET", "POST"])
 @login_required
 def edit_dashboard(role_id):
-    prof = get_profile()
-    user_role = (prof or {}).get("role", "")
+prof = get_profile()
+user_role = (prof or {}).get("role", "")
 
-    if not prof or user_role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+if not prof or user_role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    # 🔥 ALWAYS USE STRING ROLE_ID
-    role_id = str(role_id)
-    company_id = str(prof.get("company_id"))
+# 🔥 ALWAYS USE STRING ROLE_ID
+role_id = str(role_id)
+company_id = str(prof.get("company_id"))
 
-    # 🔥 LOAD (must match what you SAVE)
-    res = api_get("/role-dashboard", params={
-        "role": role_id,
-        "company_id": company_id
-    })
+# 🔥 LOAD (must match what you SAVE)
+res = api_get("/role-dashboard", params={
+"role": role_id,
+"company_id": company_id
+})
 
-    print("[LOAD PARAMS]", role_id, company_id)
-    print("[LOAD RAW]", res)
+print("[LOAD PARAMS]", role_id, company_id)
+print("[LOAD RAW]", res)
 
-    # Direct dict access — _unwrap only handles list shapes; /role-dashboard returns {"data": {...}}
-    html_code = ""
-    if isinstance(res, dict):
-        inner = res.get("data", {})
-        if isinstance(inner, dict):
-            html_code = inner.get("html", "") or ""
+# Direct dict access — _unwrap only handles list shapes; /role-dashboard returns {"data": {...}}
+html_code = ""
+if isinstance(res, dict):
+inner = res.get("data", {})
+if isinstance(inner, dict):
+html_code = inner.get("html", "") or ""
 
-    print("[LOAD HTML LEN]", len(html_code))
+print("[LOAD HTML LEN]", len(html_code))
 
-    # 🔥 SAVE (same keys as LOAD)
-    if request.method == "POST":
-        html_code = request.form.get("html_code", "")
-print("[SAVE] Role:", role_id, "Company:", company_id)
-print("[SAVE] HTML length:", len(html_code))
+# 🔥 SAVE (same keys as LOAD)
+if request.method == "POST":
+html_code = request.form.get("html_code", "").strip()
 
-    if not html_code.strip():
-        flash("Save failed: dashboard HTML is empty.", "error")
-        return redirect(url_for("edit_dashboard", role_id=role_id))
+print("[SAVE PARAMS]", role_id, company_id)
+print("[SAVE HTML LEN]", len(html_code))
 
-    try:
-        status, resp = api_post("/role-dashboard", body={
-            "role": role_id,
-            "company_id": company_id,
-            "html": html_code
-        })
+status, resp = api_post("/role-dashboard", body={
+"role": role_id,
+"company_id": company_id,
+"html": html_code
+})
 
-        print("[SAVE] API status:", status)
-        print("[SAVE] API response:", resp)
+print("[SAVE RESPONSE]", status, resp)
 
-        if not (200 <= int(status) < 300):
-            flash(f"Save failed: API returned status {status}.", "error")
-            return redirect(url_for("edit_dashboard", role_id=role_id))
+flash("Dashboard saved!", "success")
+return redirect(url_for("edit_dashboard", role_id=role_id))
 
-        # Verify the stored value by reading it back.
-        saved_html = get_role_dashboard(role_id, company_id)
-
-        if saved_html != html_code:
-            print("[SAVE] Verification failed. Reloaded length:",
-                  len(saved_html or ""))
-            flash("Save verification failed: stored HTML does not match.", "error")
-        else:
-            flash("Dashboard saved and verified successfully.", "success")
-
-    except Exception as e:
-        print("[SAVE ERROR]", repr(e))
-        flash("Dashboard save failed. Check Render logs.", "error")
-
-    return redirect(url_for("edit_dashboard", role_id=role_id))
-    return render_template(
-        "edit_dashboard.html",
-        role={"id": role_id, "name": f"Role {role_id}"},
-        html_code=html_code
-    )
+return render_template(
+"edit_dashboard.html",
+role={"id": role_id, "name": f"Role {role_id}"},
+html_code=html_code
+)
 # ─────────────────────────────────────────────
 # 8. Create Role (Admin + Manager)
 # ─────────────────────────────────────────────
@@ -628,31 +648,31 @@ print("[SAVE] HTML length:", len(html_code))
 @app.route("/admin/create_role", methods=["POST"])
 @login_required
 def create_role():
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[create_role] role={role}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[create_role] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    role_name = request.form.get("role_name", "").strip()
-    if not role_name:
-        flash("Role name is required.", "danger")
-        return redirect(url_for("admin_dashboard"))
+role_name = request.form.get("role_name", "").strip()
+if not role_name:
+flash("Role name is required.", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    status, data = api_post("/roles", {
-        "company_id": prof.get("company_id"),
-        "name":       role_name,
-    })
+status, data = api_post("/roles", {
+"company_id": prof.get("company_id"),
+"name":       role_name,
+})
 
-    if status in (200, 201):
-        flash(f"Role '{role_name}' created.", "success")
-    else:
-        error = data.get("message") or data.get("error") or "Role creation failed."
-        flash(f"{error}", "danger")
+if status in (200, 201):
+flash(f"Role '{role_name}' created.", "success")
+else:
+error = data.get("message") or data.get("error") or "Role creation failed."
+flash(f"{error}", "danger")
 
-    return redirect(url_for("admin_dashboard"))
+return redirect(url_for("admin_dashboard"))
 
 
 # ─────────────────────────────────────────────
@@ -662,45 +682,45 @@ def create_role():
 @app.route("/admin/create_employee", methods=["POST"])
 @login_required
 def create_employee():
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[create_employee] role={role}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[create_employee] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    # ✅ FIX #2 — correct field names: name → full_name, role_id → role
-    name       = request.form.get("name",     "").strip()   # form field "name"
-    email      = request.form.get("email",    "").strip()
-    password   = request.form.get("password") or gen_salt(8)
-    role_id    = request.form.get("role_id")                # form field "role_id"
-    company_id = prof.get("company_id")
+# ✅ FIX #2 — correct field names: name → full_name, role_id → role
+name       = request.form.get("name",     "").strip()   # form field "name"
+email      = request.form.get("email",    "").strip()
+password   = request.form.get("password") or gen_salt(8)
+role_id    = request.form.get("role_id")                # form field "role_id"
+company_id = prof.get("company_id")
 
-    print(f"[create_employee] name={name} email={email} role_id={role_id} company_id={company_id}")  # ✅ FIX #7
+print(f"[create_employee] name={name} email={email} role_id={role_id} company_id={company_id}")  # ✅ FIX #7
 
-    if not (name and email and role_id):
-        flash("All fields are required.", "danger")
-        return redirect(url_for("admin_dashboard"))
+if not (name and email and role_id):
+flash("All fields are required.", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    # ✅ FIX #2 — send correct fields: full_name, email, password, role, company_id
-    status, data = api_post("/employees", {
-        "full_name":  name,
-        "email":      email,
-        "password":   password,
-        "role":       role_id,
-        "company_id": company_id,
-    })
+# ✅ FIX #2 — send correct fields: full_name, email, password, role, company_id
+status, data = api_post("/employees", {
+"full_name":  name,
+"email":      email,
+"password":   password,
+"role":       role_id,
+"company_id": company_id,
+})
 
-    print(f"[create_employee] api response status={status} data={data}")  # ✅ FIX #7
+print(f"[create_employee] api response status={status} data={data}")  # ✅ FIX #7
 
-    if status not in (200, 201):
-        error = data.get("message") or data.get("error") or "Create failed."
-        flash(f"Employee creation failed: {error}", "danger")
-        return redirect(url_for("admin_dashboard"))
+if status not in (200, 201):
+error = data.get("message") or data.get("error") or "Create failed."
+flash(f"Employee creation failed: {error}", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    flash(f"Employee created. Password: {password}", "success")
-    return redirect(url_for("admin_dashboard"))
+flash(f"Employee created. Password: {password}", "success")
+return redirect(url_for("admin_dashboard"))
 
 
 # ─────────────────────────────────────────────
@@ -710,22 +730,22 @@ def create_employee():
 @app.route("/admin/delete_employee/<user_id>", methods=["POST"])
 @login_required
 def delete_employee(user_id):
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[delete_employee] role={role} user_id={user_id}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[delete_employee] role={role} user_id={user_id}")  # ✅ FIX #7
 
-    # ✅ FIX #1
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    status, data = api_delete(f"/employees/{user_id}")
+status, data = api_delete(f"/employees/{user_id}")
 
-    if status not in (200, 204):
-        flash(data.get("error", "Delete failed"), "danger")
-    else:
-        flash("Employee deleted", "success")
+if status not in (200, 204):
+flash(data.get("error", "Delete failed"), "danger")
+else:
+flash("Employee deleted", "success")
 
-    return redirect(url_for("admin_dashboard"))
+return redirect(url_for("admin_dashboard"))
 
 
 # ─────────────────────────────────────────────
@@ -735,52 +755,52 @@ def delete_employee(user_id):
 @app.route("/admin/create_task", methods=["POST"])
 @login_required
 def create_task():
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[create_task] role={role}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[create_task] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    title       = request.form.get("title",       "").strip()
-    description = request.form.get("description", "")
-    # ✅ FIX #3 — assigned_to must come from employee dropdown
-    assigned_to = request.form.get("assigned_to") or None
-    priority    = request.form.get("priority")    or "Medium"
-    deadline    = request.form.get("deadline")    or None
+title       = request.form.get("title",       "").strip()
+description = request.form.get("description", "")
+# ✅ FIX #3 — assigned_to must come from employee dropdown
+assigned_to = request.form.get("assigned_to") or None
+priority    = request.form.get("priority")    or "Medium"
+deadline    = request.form.get("deadline")    or None
 
-    print(f"[create_task] title={title} assigned_to={assigned_to} priority={priority}")  # ✅ FIX #7
+print(f"[create_task] title={title} assigned_to={assigned_to} priority={priority}")  # ✅ FIX #7
 
-    file_url  = None
-    task_file = request.files.get("task_file")
-    if task_file and task_file.filename:
-        fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-        file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-        task_file.save(file_path)
-        file_url = f"/static/task_files/{fname}"
+file_url  = None
+task_file = request.files.get("task_file")
+if task_file and task_file.filename:
+fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+task_file.save(file_path)
+file_url = f"/static/task_files/{fname}"
 
-    # ✅ FIX #4 — always save company_id, assigned_to, status
-    status, data = api_post("/tasks", {
-        "title":       title,
-        "description": description,
-        "company_id":  prof.get("company_id"),
-        "assigned_to": assigned_to,
-        "priority":    priority,
-        "deadline":    deadline,
-        "status":      "Pending",
-        "file_url":    file_url,
-    })
+# ✅ FIX #4 — always save company_id, assigned_to, status
+status, data = api_post("/tasks", {
+"title":       title,
+"description": description,
+"company_id":  prof.get("company_id"),
+"assigned_to": assigned_to,
+"priority":    priority,
+"deadline":    deadline,
+"status":      "Pending",
+"file_url":    file_url,
+})
 
-    print(f"[create_task] api response status={status} data={data}")  # ✅ FIX #7
+print(f"[create_task] api response status={status} data={data}")  # ✅ FIX #7
 
-    if status in (200, 201):
-        flash("Task created.", "success")
-    else:
-        error = data.get("message") or data.get("error") or "Task creation failed."
-        flash(f"{error}", "danger")
+if status in (200, 201):
+flash("Task created.", "success")
+else:
+error = data.get("message") or data.get("error") or "Task creation failed."
+flash(f"{error}", "danger")
 
-    return redirect(url_for("admin_dashboard"))
+return redirect(url_for("admin_dashboard"))
 
 
 # ─────────────────────────────────────────────
@@ -789,8 +809,8 @@ def create_task():
 
 @app.route("/admin/delete_task/<task_id>", methods=["POST"])
 def admin_delete_task(task_id):
-    api_delete(f"/tasks/{task_id}")
-    return redirect(url_for("admin_dashboard"))
+api_delete(f"/tasks/{task_id}")
+return redirect(url_for("admin_dashboard"))
 
 
 # ─────────────────────────────────────────────
@@ -800,33 +820,33 @@ def admin_delete_task(task_id):
 @app.route("/admin/reports")
 @login_required
 def reports_page():
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[reports_page] role={role}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[reports_page] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    company_id = prof.get("company_id") or ""
-    tasks      = _unwrap(api_get("/tasks", params={"company_id": company_id}))
+company_id = prof.get("company_id") or ""
+tasks      = _unwrap(api_get("/tasks", params={"company_id": company_id}))
 
-    total     = len(tasks)
-    completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
-    pending   = total - completed
+total     = len(tasks)
+completed = sum(1 for t in tasks if (t.get("status") or "").lower() == "completed")
+pending   = total - completed
 
-    tasks_per_employee: dict = {}
-    for t in tasks:
-        assigned = str(t.get("assigned_to") or "Unassigned")
-        tasks_per_employee[assigned] = tasks_per_employee.get(assigned, 0) + 1
-    
-    return render_template(
-        "reports.html",
-        total=total,
-        completed=completed,
-        pending=pending,
-        tasks_per_employee=tasks_per_employee,
-    )
+tasks_per_employee: dict = {}
+for t in tasks:
+assigned = str(t.get("assigned_to") or "Unassigned")
+tasks_per_employee[assigned] = tasks_per_employee.get(assigned, 0) + 1
+
+return render_template(
+"reports.html",
+total=total,
+completed=completed,
+pending=pending,
+tasks_per_employee=tasks_per_employee,
+)
 
 
 # ─────────────────────────────────────────────
@@ -836,66 +856,66 @@ def reports_page():
 @app.route("/employee")
 @login_required
 def employee_dashboard():
-    prof = get_profile()
-    if not prof:
-        return redirect(url_for("login"))
+prof = get_profile()
+if not prof:
+return redirect(url_for("login"))
 
-    user_id = str(prof.get("id"))
-    company_id = str(prof.get("company_id"))
-    role_id = str(prof.get("role_id"))
+user_id = str(prof.get("id"))
+company_id = str(prof.get("company_id"))
+role_id = str(prof.get("role_id"))
 
-    print("[EMPLOYEE PARAMS]", role_id, company_id)
+print("[EMPLOYEE PARAMS]", role_id, company_id)
 
-    # 🔥 FIXED TASK FETCH — api_get returns dict|None, never a tuple
-    res_tasks = api_get("/tasks", params={"assigned_to": user_id,"company_id": company_id})
+# 🔥 FIXED TASK FETCH — api_get returns dict|None, never a tuple
+res_tasks = api_get("/tasks", params={"assigned_to": user_id,"company_id": company_id})
 
-    print("[TASKS RAW]", res_tasks)
+print("[TASKS RAW]", res_tasks)
 
-    tasks = []
+tasks = []
 
-    if isinstance(res_tasks, dict):
-        # handles {"data": [...]} or {"tasks": [...]} or plain list at top level
-        tasks = res_tasks.get("data") or res_tasks.get("tasks") or []
-        if not isinstance(tasks, list):
-            tasks = []
-    elif isinstance(res_tasks, list):
-        tasks = res_tasks
+if isinstance(res_tasks, dict):
+# handles {"data": [...]} or {"tasks": [...]} or plain list at top level
+tasks = res_tasks.get("data") or res_tasks.get("tasks") or []
+if not isinstance(tasks, list):
+tasks = []
+elif isinstance(res_tasks, list):
+tasks = res_tasks
 
-    print("[TASKS FINAL]", tasks)
+print("[TASKS FINAL]", tasks)
 
-    total = len(tasks)
-    completed = sum(
-        1 for t in tasks if (t.get("status") or "").lower() == "completed"
-    )
-    percent = int((completed / total) * 100) if total else 0
+total = len(tasks)
+completed = sum(
+1 for t in tasks if (t.get("status") or "").lower() == "completed"
+)
+percent = int((completed / total) * 100) if total else 0
 
-    # 🔥 DASHBOARD FETCH — api_get returns dict|None, never a tuple
-    res = api_get("/role-dashboard", params={
-        "role": role_id,
-        "company_id": company_id
-    })
+# 🔥 DASHBOARD FETCH — api_get returns dict|None, never a tuple
+res = api_get("/role-dashboard", params={
+"role": role_id,
+"company_id": company_id
+})
 
-    print("[DASHBOARD RAW]", res)
+print("[DASHBOARD RAW]", res)
 
-    dashboard_html = ""
+dashboard_html = ""
 
-    if isinstance(res, dict):
-        inner = res.get("data", {})
-        if isinstance(inner, dict):
-            dashboard_html = inner.get("html", "") or ""
-        elif isinstance(inner, str):
-            dashboard_html = inner
+if isinstance(res, dict):
+inner = res.get("data", {})
+if isinstance(inner, dict):
+dashboard_html = inner.get("html", "") or ""
+elif isinstance(inner, str):
+dashboard_html = inner
 
-    print("[FINAL HTML]", dashboard_html[:120] if dashboard_html else "EMPTY")
+print("[FINAL HTML]", dashboard_html[:120] if dashboard_html else "EMPTY")
 
-    return render_template(
-        "employee_dashboard_multi.html",
-        profile=prof,
-        tasks=tasks,
-        percent=percent,
-        allowed_roles=ALLOWED_ROLES,
-        dashboard_html=dashboard_html,
-    )
+return render_template(
+"employee_dashboard_multi.html",
+profile=prof,
+tasks=tasks,
+percent=percent,
+allowed_roles=ALLOWED_ROLES,
+dashboard_html=dashboard_html,
+)
 
 # ─────────────────────────────────────────────
 # 15. Manager Routes (Admin + Manager)
@@ -904,115 +924,115 @@ def employee_dashboard():
 @app.route("/manager/create_task", methods=["POST"])
 @login_required
 def manager_create_task():
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[manager_create_task] role={role}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[manager_create_task] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1 — allow both company_admin and manager
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1 — allow both company_admin and manager
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    title       = request.form.get("title", "").strip()
-    description = request.form.get("description", "")
-    # ✅ FIX #3 — assigned_to from employee dropdown
-    assigned_to = request.form.get("assigned_to") or None
-    priority    = request.form.get("priority")    or "Medium"
-    deadline    = request.form.get("deadline")    or None
+title       = request.form.get("title", "").strip()
+description = request.form.get("description", "")
+# ✅ FIX #3 — assigned_to from employee dropdown
+assigned_to = request.form.get("assigned_to") or None
+priority    = request.form.get("priority")    or "Medium"
+deadline    = request.form.get("deadline")    or None
 
-    print(f"[manager_create_task] title={title} assigned_to={assigned_to}")  # ✅ FIX #7
+print(f"[manager_create_task] title={title} assigned_to={assigned_to}")  # ✅ FIX #7
 
-    if not title:
-        flash("Task title is required.", "danger")
-        return redirect(url_for("admin_dashboard"))
+if not title:
+flash("Task title is required.", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    file_url  = None
-    task_file = request.files.get("task_file")
-    if task_file and task_file.filename:
-        fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-        file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-        task_file.save(file_path)
-        file_url = f"/static/task_files/{fname}"
+file_url  = None
+task_file = request.files.get("task_file")
+if task_file and task_file.filename:
+fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+task_file.save(file_path)
+file_url = f"/static/task_files/{fname}"
 
-    # ✅ FIX #4 — always save company_id, assigned_to, status
-    status, data = api_post("/tasks", {
-        "title":       title,
-        "description": description,
-        "company_id":  prof.get("company_id"),
-        "assigned_to": assigned_to,
-        "priority":    priority,
-        "deadline":    deadline,
-        "status":      "Pending",
-        "file_url":    file_url,
-    })
+# ✅ FIX #4 — always save company_id, assigned_to, status
+status, data = api_post("/tasks", {
+"title":       title,
+"description": description,
+"company_id":  prof.get("company_id"),
+"assigned_to": assigned_to,
+"priority":    priority,
+"deadline":    deadline,
+"status":      "Pending",
+"file_url":    file_url,
+})
 
-    print(f"[manager_create_task] api response status={status} data={data}")  # ✅ FIX #7
+print(f"[manager_create_task] api response status={status} data={data}")  # ✅ FIX #7
 
-    if status in (200, 201):
-        flash("Task created.", "success")
-    else:
-        error = data.get("message") or data.get("error") or "Task creation failed."
-        flash(f"{error}", "danger")
+if status in (200, 201):
+flash("Task created.", "success")
+else:
+error = data.get("message") or data.get("error") or "Task creation failed."
+flash(f"{error}", "danger")
 
-    return redirect(url_for("admin_dashboard"))
+return redirect(url_for("admin_dashboard"))
 
 
 @app.route("/manager/create_employee", methods=["POST"])
 @login_required
 def manager_create_employee():
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[manager_create_employee] role={role}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[manager_create_employee] role={role}")  # ✅ FIX #7
 
-    # ✅ FIX #1 — allow both company_admin and manager
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1 — allow both company_admin and manager
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    # ✅ FIX #2 — correct field names: form "name" → full_name, form "role_id" → role
-    name       = request.form.get("name",     "").strip()   # form field is "name"
-    email      = request.form.get("email",    "").strip()
-    password   = request.form.get("password") or gen_salt(8)
-    role_id    = request.form.get("role_id")                # form field is "role_id"
-    company_id = prof.get("company_id")
+# ✅ FIX #2 — correct field names: form "name" → full_name, form "role_id" → role
+name       = request.form.get("name",     "").strip()   # form field is "name"
+email      = request.form.get("email",    "").strip()
+password   = request.form.get("password") or gen_salt(8)
+role_id    = request.form.get("role_id")                # form field is "role_id"
+company_id = prof.get("company_id")
 
-    print(f"[manager_create_employee] name={name} email={email} role_id={role_id} company_id={company_id}")  # ✅ FIX #7
+print(f"[manager_create_employee] name={name} email={email} role_id={role_id} company_id={company_id}")  # ✅ FIX #7
 
-    if not (name and email and role_id):
-        flash("Name, email and role are required.", "danger")
-        return redirect(url_for("admin_dashboard"))
+if not (name and email and role_id):
+flash("Name, email and role are required.", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    # ✅ FIX #2 — send correct fields: full_name (not name), role (not role_id key)
-    status, data = api_post("/employees", {
-        "full_name":  name,
-        "email":      email,
-        "password":   password,
-        "role":       role_id,
-        "company_id": company_id,
-    })
+# ✅ FIX #2 — send correct fields: full_name (not name), role (not role_id key)
+status, data = api_post("/employees", {
+"full_name":  name,
+"email":      email,
+"password":   password,
+"role":       role_id,
+"company_id": company_id,
+})
 
-    print(f"[manager_create_employee] api response status={status} data={data}")  # ✅ FIX #7
+print(f"[manager_create_employee] api response status={status} data={data}")  # ✅ FIX #7
 
-    if status not in (200, 201):
-        error = data.get("message") or data.get("error") or "Failed to create user."
-        flash(f"Employee creation failed: {error}", "danger")
-        return redirect(url_for("admin_dashboard"))
+if status not in (200, 201):
+error = data.get("message") or data.get("error") or "Failed to create user."
+flash(f"Employee creation failed: {error}", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    user_id = (
-        (data.get("user") or {}).get("id")
-        or data.get("id")
-        or data.get("user_id")
-    )
+user_id = (
+(data.get("user") or {}).get("id")
+or data.get("id")
+or data.get("user_id")
+)
 
-    if user_id:
-        api_post("/profiles", {
-            "id":         user_id,
-            "full_name":  name,
-            "company_id": company_id,
-            "role":       "employee",
-            "role_id":    role_id,
-        })
+if user_id:
+api_post("/profiles", {
+"id":         user_id,
+"full_name":  name,
+"company_id": company_id,
+"role":       "employee",
+"role_id":    role_id,
+})
 
-    flash(f"Employee created (password: {password}) — share securely.", "success")
-    return redirect(url_for("admin_dashboard"))
+flash(f"Employee created (password: {password}) — share securely.", "success")
+return redirect(url_for("admin_dashboard"))
 
 
 
@@ -1023,37 +1043,37 @@ def manager_create_employee():
 @app.route("/appeal/send", methods=["POST"])
 @login_required
 def send_appeal():
-    prof = get_profile()
-    if not prof:
-        return "Unauthorized", 403
+prof = get_profile()
+if not prof:
+return "Unauthorized", 403
 
-    title   = request.form.get("title",   "").strip()
-    message = request.form.get("message", "").strip()
-    file    = request.files.get("file")
+title   = request.form.get("title",   "").strip()
+message = request.form.get("message", "").strip()
+file    = request.files.get("file")
 
-    file_url = None
-    if file and file.filename:
-        ext      = file.filename.rsplit(".", 1)[-1]
-        fname    = f"{gen_salt(10)}.{ext}"
-        savepath = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-        file.save(savepath)
-        file_url = f"/static/task_files/{fname}"
+file_url = None
+if file and file.filename:
+ext      = file.filename.rsplit(".", 1)[-1]
+fname    = f"{gen_salt(10)}.{ext}"
+savepath = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+file.save(savepath)
+file_url = f"/static/task_files/{fname}"
 
-    status, data = api_post("/appeals", {
-        "user_id":    prof.get("id"),
-        "company_id": prof.get("company_id"),
-        "title":      title,
-        "message":    message,
-        "file_url":   file_url,
-    })
+status, data = api_post("/appeals", {
+"user_id":    prof.get("id"),
+"company_id": prof.get("company_id"),
+"title":      title,
+"message":    message,
+"file_url":   file_url,
+})
 
-    if status in (200, 201):
-        flash("Appeal submitted successfully.", "success")
-    else:
-        error = data.get("message") or data.get("error") or "Appeal submission failed."
-        flash(f"{error}", "danger")
+if status in (200, 201):
+flash("Appeal submitted successfully.", "success")
+else:
+error = data.get("message") or data.get("error") or "Appeal submission failed."
+flash(f"{error}", "danger")
 
-    return redirect(url_for("employee_dashboard"))
+return redirect(url_for("employee_dashboard"))
 
 
 # ─────────────────────────────────────────────
@@ -1063,31 +1083,31 @@ def send_appeal():
 @app.route("/marketing/create_task", methods=["POST"])
 @login_required
 def marketing_create_task():
-    prof = get_profile()
-    if not prof or str(prof.get("role_id", "")) != "2":
-        return "Unauthorized", 403
+prof = get_profile()
+if not prof or str(prof.get("role_id", "")) != "2":
+return "Unauthorized", 403
 
-    # ✅ FIX #3 — assigned_to from dropdown
-    assigned_to = request.form.get("assigned_to") or None
-    print(f"[marketing_create_task] assigned_to={assigned_to}")  # ✅ FIX #7
+# ✅ FIX #3 — assigned_to from dropdown
+assigned_to = request.form.get("assigned_to") or None
+print(f"[marketing_create_task] assigned_to={assigned_to}")  # ✅ FIX #7
 
-    # ✅ FIX #4 — include company_id, assigned_to, status
-    status, data = api_post("/tasks", {
-        "title":       request.form.get("title", "").strip(),
-        "description": request.form.get("description", ""),
-        "assigned_to": assigned_to,
-        "company_id":  prof.get("company_id"),
-        "status":      "Pending",
-        "deadline":    request.form.get("deadline"),
-    })
+# ✅ FIX #4 — include company_id, assigned_to, status
+status, data = api_post("/tasks", {
+"title":       request.form.get("title", "").strip(),
+"description": request.form.get("description", ""),
+"assigned_to": assigned_to,
+"company_id":  prof.get("company_id"),
+"status":      "Pending",
+"deadline":    request.form.get("deadline"),
+})
 
-    if status in (200, 201):
-        flash("Task assigned successfully", "success")
-    else:
-        error = data.get("message") or data.get("error") or "Task creation failed."
-        flash(f"{error}", "danger")
+if status in (200, 201):
+flash("Task assigned successfully", "success")
+else:
+error = data.get("message") or data.get("error") or "Task creation failed."
+flash(f"{error}", "danger")
 
-    return redirect(url_for("role_dashboard", role_id=2))
+return redirect(url_for("role_dashboard", role_id=2))
 
 #TASKS UPLOAD FOR EMPLOYEES
 import requests
@@ -1095,71 +1115,71 @@ import requests
 @app.route("/manager/upload_task_file/<task_id>", methods=["POST"])
 @login_required
 def manager_upload_task_file(task_id):
-    prof = get_profile()
-    role = (prof or {}).get("role", "")
-    print(f"[manager_upload_task_file] role={role} task_id={task_id}")  # ✅ FIX #7
+prof = get_profile()
+role = (prof or {}).get("role", "")
+print(f"[manager_upload_task_file] role={role} task_id={task_id}")  # ✅ FIX #7
 
-    # ✅ FIX #1 — allow both company_admin and manager
-    if not prof or role not in ALLOWED_ROLES:
-        return "Unauthorized", 403
+# ✅ FIX #1 — allow both company_admin and manager
+if not prof or role not in ALLOWED_ROLES:
+return "Unauthorized", 403
 
-    task_raw = api_get(f"/tasks/{task_id}")
-    task     = task_raw
-    if isinstance(task_raw, dict):
-        task = task_raw.get("data") or (task_raw if task_raw.get("id") else None)
+task_raw = api_get(f"/tasks/{task_id}")
+task     = task_raw
+if isinstance(task_raw, dict):
+task = task_raw.get("data") or (task_raw if task_raw.get("id") else None)
 
-    if not task or not isinstance(task, dict):
-        flash("Task not found.", "danger")
-        return redirect(url_for("admin_dashboard"))
+if not task or not isinstance(task, dict):
+flash("Task not found.", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    if str(task.get("company_id", "")) != str(prof.get("company_id", "")):
-        flash("You cannot modify tasks from another company.", "danger")
-        return redirect(url_for("admin_dashboard"))
+if str(task.get("company_id", "")) != str(prof.get("company_id", "")):
+flash("You cannot modify tasks from another company.", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    task_file = request.files.get("task_file")
-    if not task_file or not task_file.filename:
-        flash("Please choose a file to upload.", "danger")
-        return redirect(url_for("admin_dashboard"))
+task_file = request.files.get("task_file")
+if not task_file or not task_file.filename:
+flash("Please choose a file to upload.", "danger")
+return redirect(url_for("admin_dashboard"))
 
-    fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
-    file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-    task_file.save(file_path)
-    file_url  = f"/static/task_files/{fname}"
+fname     = f"{gen_salt(6)}_{secure_filename(task_file.filename)}"
+file_path = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+task_file.save(file_path)
+file_url  = f"/static/task_files/{fname}"
 
-    status, data = api_put(f"/tasks/{task_id}", {
-        "file_url": file_url,
-        "status":   "Completed",
-    })
+status, data = api_put(f"/tasks/{task_id}", {
+"file_url": file_url,
+"status":   "Completed",
+})
 
-    if status in (200, 201, 204):
-        flash("Task file uploaded.", "success")
-    else:
-        error = data.get("message") or data.get("error") or "Update failed."
-        flash(f"Failed to update task file: {error}", "danger")
+if status in (200, 201, 204):
+flash("Task file uploaded.", "success")
+else:
+error = data.get("message") or data.get("error") or "Update failed."
+flash(f"Failed to update task file: {error}", "danger")
 
-    return redirect(url_for("admin_dashboard"))
+return redirect(url_for("admin_dashboard"))
 
- # SOMA INTEGRATION
+# SOMA INTEGRATION
 @app.route("/admin/soma_settings", methods=["POST"])
 @login_required
 def soma_settings():
-    prof = get_profile()
-    company_id = prof.get("company_id")
+prof = get_profile()
+company_id = prof.get("company_id")
 
-    api_key = request.form.get("api_key")
-    pages = request.form.getlist("pages")  # multiple select
+api_key = request.form.get("api_key")
+pages = request.form.getlist("pages")  # multiple select
 
-    db.execute("""
-        INSERT INTO integrations (company_id, api_key, pages)
-        VALUES (?, ?, ?)
-        ON CONFLICT(company_id) 
-        DO UPDATE SET api_key=excluded.api_key, pages=excluded.pages
-    """, (company_id, api_key, ",".join(pages)))
+db.execute("""
+       INSERT INTO integrations (company_id, api_key, pages)
+       VALUES (?, ?, ?)
+       ON CONFLICT(company_id) 
+       DO UPDATE SET api_key=excluded.api_key, pages=excluded.pages
+   """, (company_id, api_key, ",".join(pages)))
 
-    db.commit()
+db.commit()
 
-    flash("SomaEdgex connected!", "success")
-    return redirect("/admin")
+flash("SomaEdgex connected!", "success")
+return redirect("/admin")
 
 
 
@@ -1168,4 +1188,4 @@ def soma_settings():
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.run(debug=True)
+app.run(debug=True)

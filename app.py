@@ -112,21 +112,32 @@ def api_get(path: str, params: dict = None):
 
 
 def api_post(path: str, body: dict = None):
-    """POST -> (status_code, json_data)."""
+    """POST -> (status_code, response_data)."""
     try:
-        print(f"[api_post] {path} body={body}")  # ✅ FIX #7 — log request body
+        print(f"[api_post] {path} body={body}")
+
         resp = requests.post(
             f"{API_URL}{path}",
             json=body or {},
             headers=_auth_headers(),
             timeout=10,
         )
-        print(f"[api_post] {path} -> {resp.status_code} | response={_safe_json(resp)}")  # ✅ FIX #7
-        return resp.status_code, _safe_json(resp)
+
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {"raw_response": resp.text[:1000]}
+
+        print(
+            f"[api_post] {path} -> {resp.status_code} "
+            f"| response={data!r}"
+        )
+
+        return resp.status_code, data
+
     except Exception as exc:
         print(f"[api_post] ERROR {path}: {exc}")
         return 0, {"error": str(exc)}
-
 
 def api_put(path: str, body: dict = None):
     """PUT -> (status_code, json_data)."""

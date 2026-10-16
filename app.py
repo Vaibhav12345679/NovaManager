@@ -607,7 +607,10 @@ def edit_dashboard(role_id):
         "role": role_id,
         "company_id": company_id,
         "html": html_code
-})
+    })
+    print("[SAVE STATUS]", repr(status))
+    print("[SAVE RESPONSE TYPE]", type(resp).__name__)
+    print("[SAVE RESPONSE]", repr(resp))
 # ─────────────────────────────────────────────
 # 8. Create Role (Admin + Manager)
 # ─────────────────────────────────────────────

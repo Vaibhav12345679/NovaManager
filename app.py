@@ -580,10 +580,10 @@ def edit_dashboard(role_id):
 
     # 🔥 SAVE (same keys as LOAD)
     if request.method == "POST":
-    html_code = request.form.get("html_code", "")
+        html_code = request.form.get("html_code", "")
 
-    print("[SAVE PARAMS]", role_id, company_id)
-    print("[SAVE HTML LEN]", len(html_code))
+        print("[SAVE PARAMS]", role_id, company_id)
+        print("[SAVE HTML LEN]", len(html_code))
 
     if not html_code.strip():
         flash("Save failed: dashboard HTML is empty.", "error")
